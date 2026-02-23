@@ -29,11 +29,23 @@ Each model follows the same evaluation:
 
 1. Load the shared dataset (`data_share/midas_share.parquet`, 3,357 rows)
 2. Stratified sample: 5 images per class (seed=42) → 15 images total
-3. Two prompts per image:
+3. Three prompts per image:
    - **Describe**: "Describe the lesion in detail."
    - **Classify**: "Is the lesion malignant or benign, or other?"
-4. Parse predicted label from classification response
-5. Save results to `<model>/results/`
+   - **Describe then classify**: "Describe the lesion in detail. Is the lesion malignant or benign, or other?"
+4. Save results to `<model>/results/<model>_predictions.csv`
+
+### Output CSV Format
+
+All notebooks produce the same columns:
+
+| Column | Description |
+|--------|-------------|
+| `uid` | Sample identifier |
+| `ground_truth` | True label from MIDAS (malignant / benign / other) |
+| `description` | Model response to the describe prompt |
+| `classification` | Model response to the classify prompt |
+| `describe_then_classify` | Model response to the combined prompt |
 
 ## Per-Model Setup
 

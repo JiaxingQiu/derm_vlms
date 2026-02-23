@@ -59,7 +59,7 @@ create a hf_models folder under model_skingpt4
 ```
 echo "hf_models/" >> .gitignore
 echo "Llama-2-13b-chat-hf/" >> .gitignore
-cho "llama-13b/" >> .gitignore
+echo "llama-13b/" >> .gitignore
 echo "vicuna-13b-delta-v0/" >> .gitignore
 ```
 

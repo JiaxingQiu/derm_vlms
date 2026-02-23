@@ -1,0 +1,12 @@
+transformers==4.57.1
+accelerate==1.8.1
+pillow==11.0.0
+peft==0.16.0
+torch==2.7.1
+torchvision==0.22.1
+torchaudio==2.7.1
+scikit-learn
+pandas
+pyarrow
+tqdm
+ipykernel

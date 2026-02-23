@@ -1,0 +1,56 @@
+uid,y3,description,classification,pred_label
+1833,benign,There is 0.55 chance that the lesion is Atypical Nevus.  There is 0.23 chance that the lesion is Melanoma.  There is 0.23 chance that the lesion is Nevus. ,The lesion is malignant.,malignant
+1191,benign,There is 0.55 chance that the lesion is Hemangioma.  There is 0.23 chance that the lesion is Purpura.  There is 0.23 chance that the lesion is Drug Rash. ,Is the lesion present in the skin of the body?,
+610,benign,There is 0.33 chance that the lesion is Lichen Simplex Chronicus.  There is 0.33 chance that the lesion is Eczema.  There is 0.33 chance that the lesion is Psoriasis. ,There is 0.33 chance that the lesion is Dermatofibroma.  There is 0.33 chance that the lesion is Pseudolymphoma.  There is 0.33 chance that the lesion is Neoplasm of uncertain behavior of skin of back of arm. ,
+1053,benign,There is 0.55 chance that the lesion is Cyst.  There is 0.23 chance that the lesion is Calcinosis cutis.  There is 0.23 chance that the lesion is Dermatofibroma. ,Is the lesion infected?,
+188,benign,There is 0.55 chance that the lesion is Dermatofibroma.  There is 0.23 chance that the lesion is Melanocytic Nevus.  There is 0.23 chance that the lesion is Lichen Simplex Chronicus. ,Is the lesion a cyst?,
+3050,malignant,There is 0.33 chance that the lesion is Hemangioma.  There is 0.33 chance that the lesion is Benign tumor of skin.  There is 0.33 chance that the lesion is Cutaneous sarcoidosis. ,The lesion is benign.,benign
+416,malignant,"The lesion is a wound of the scalp. It could be due to trauma, such as a fall or a blow, or it could be a surgical wound. The wound is located in the frontal region of the head, and it is surrounded by a skin flap. The wound is not infected, as there are no signs of pus or inflammation.",The lesion is benign.,benign
+3310,malignant,There is 0.55 chance that the lesion is Eczema.  There is 0.23 chance that the lesion is Impetigo.  There is 0.23 chance that the lesion is Psoriasis. ,The lesion is benign.,benign
+2450,malignant,There is 0.33 chance that the lesion is Hemangioma.  There is 0.33 chance that the lesion is Melanoma.  There is 0.33 chance that the lesion is Benign tumor of skin. ,"Is the lesion in the skin or subcutaneous tissue?
+
+1. There is 0.33 chance that the lesion is Melanoma. 
+2. There is 0.33 chance that the lesion is Basal Cell Carcinoma. 
+3. There is 0.33 chance that the lesion is SCC/SCCIS. 
+
+Is the lesion in the head or neck?
+
+1. There is 0.33 chance that the lesion is O/E - ecchymoses present. 
+2. There is 0.33 chance that the lesion is O/E - skin striae. 
+3. There is 0.33 chance that the lesion is O/E - furrowing of skin. 
+
+Is the lesion in the trunk?
+
+1. There is 0.33 chance that the lesion is O/E - ecchymoses present. 
+2. There is 0.33 chance that the lesion is O/E - skin striae. 
+3. There is 0.33 chance that the lesion is O/E - furrowing of skin. 
+
+Is the lesion in the arm?
+
+1. There is 0.33 chance that the lesion is O/E - ecchymoses present. 
+2. There is 0.33 chance that the lesion is O/E - skin striae. 
+3. There is 0.33 chance that the lesion is O/E - furrowing of skin. 
+
+Is the lesion in the leg?
+
+1. There is 0.33 chance that the lesion is O/E - ecchymoses present. 
+2. There is 0.33 chance that the lesion is O/E - skin striae. 
+3. There is 0.33 chance that the lesion is O/E - furrowing of skin. 
+
+Is the lesion in the back of neck?
+
+1. There is 0.33 chance that the lesion is O/E - ecchymoses present. 
+2. There is 0.33 chance that the lesion is O/E - skin",
+969,malignant,"There is 0.55 chance that the lesion is SCC/SCCIS.  There is 0.23 chance that the lesion is Basal Cell Carcinoma.  There is 0.23 chance that the lesion is SCC/SCCIS - SCCIS stands for ""sCC/sCCIS"". ",The lesion is benign.,benign
+3325,other,There is 0.33 chance that the lesion is Hemangioma.  There is 0.33 chance that the lesion is Melanoma.  There is 0.33 chance that the lesion is Pyogenic granuloma. ,Is the lesion in the skin?,
+3205,other,There is 0.33 chance that the lesion is Dermatofibroma.  There is 0.33 chance that the lesion is Insect Bite.  There is 0.33 chance that the lesion is Allergic Contact Dermatitis. ,Is the lesion a Dermatofibroma?,
+3230,other,There is 0.55 chance that the lesion is Melanocytic Nevus.  There is 0.23 chance that the lesion is Atypical Nevus.  There is 0.23 chance that the lesion is Melanoma. ,Is the lesion a melanocytic Nevus?,
+1637,other,There is 0.33 chance that the lesion is Melanocytic Nevus.  There is 0.33 chance that the lesion is Atypical Nevus.  There is 0.33 chance that the lesion is Nevus anemicus. ,Is the lesion a dermatofibroma?,
+260,other,There is 0.55 chance that the lesion is Dermatofibroma.  There is 0.23 chance that the lesion is Lichen Simplex Chronicus.  There is 0.23 chance that the lesion is Neoplasm of uncertain behavior of skin of abdominal wall. ,"Is the lesion in the skin or subcutaneous tissue?
+
+1. Skin
+2. Subcutaneous tissue
+
+Is the lesion a cyst?
+
+1. Yes",

@@ -1,0 +1,39 @@
+# Data (large / private)
+data/
+data_share/
+
+# Model weights & checkpoints
+*.pth
+*.pt
+*.bin
+*.safetensors
+*.ckpt
+*.h5
+*.onnx
+hf_models/
+weights/
+Llama-2-13b-chat-hf/
+llama-13b/
+vicuna-13b-delta-v0/
+
+# Credentials & secrets
+tokens.py
+tokens.txt
+ssh
+ssh_rivanna
+
+# Python / Jupyter
+__pycache__/
+.ipynb_checkpoints/
+*.pyc
+
+# OS
+.DS_Store
+
+# Logs
+log/
+
+# Scratch / test files
+test*.ipynb
+test*.py
+test*

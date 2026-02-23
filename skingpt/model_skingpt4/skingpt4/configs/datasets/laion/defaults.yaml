@@ -1,0 +1,5 @@
+datasets:
+  laion:
+    data_type: images
+    build_info:
+      storage: /ibex/ai/project/c2032/skingpt/SkinGPT-4-llama2/dataset/laion/laion_dataset/{00000..10488}.tar

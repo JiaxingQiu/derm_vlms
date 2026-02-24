@@ -1,6 +1,7 @@
 # Data (large / private)
 data/
 data_share/
+results/
 
 # Model weights & checkpoints
 *.pth

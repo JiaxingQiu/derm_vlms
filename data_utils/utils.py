@@ -5,7 +5,8 @@ from PIL import Image as PILImage
 import torch
 from torch.utils.data import Dataset
 from sklearn.model_selection import train_test_split
-import json  # Add this import at the top
+import json
+import shutil
 from .tabular2text import *
 
 class MIDASDataset(Dataset):
@@ -368,6 +369,97 @@ def process_x_location(df):
     print(f"x_location: {df['x_location'].value_counts().to_dict()}")
     return df
 
+
+
+def sample_lesions(df, data_dir, output_dir='results/images',
+                   classes=('malignant', 'benign'), n_per_class=5, seed=42):
+    """Sample lesions with both dermoscopic and clinical photo images.
+
+    Returns 3 rows per lesion (photo / dscope / combined) with columns:
+      id, ground_truth, image_mode, image_path, original_image_path, lesion_id
+    Images are saved to output_dir as {num}_photo.jpg, {num}_dscope.jpg,
+    {num}_combined.jpg.
+    """
+    data_dir = Path(data_dir)
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    sub = df[df['y3'].isin(classes)].copy()
+
+    def _eligible(imgs):
+        return 'dscope' in imgs and ('6in' in imgs or '1ft' in imgs)
+
+    sub = sub[sub['lesion_images'].apply(_eligible)]
+
+    lesion_class = sub.groupby('lesion_id')['y3'].first().reset_index()
+    sampled = lesion_class.groupby('y3', group_keys=False).apply(
+        lambda g: g.sample(n=min(n_per_class, len(g)), random_state=seed),
+        include_groups=False,
+    )
+    sampled_ids = lesion_class.loc[sampled.index, 'lesion_id'].tolist()
+
+    def _resolve(image_path):
+        p = Path(image_path)
+        if p.is_file():
+            return str(p)
+        return str(data_dir / p.name)
+
+    rows = []
+    for num, lid in enumerate(sampled_ids, start=1):
+        lesion = sub[sub['lesion_id'] == lid]
+
+        photo_row = lesion[lesion['lesion_distance'] == '6in']
+        if photo_row.empty:
+            photo_row = lesion[lesion['lesion_distance'] == '1ft']
+        photo_row = photo_row.iloc[0]
+
+        dscope_row = lesion[lesion['lesion_distance'] == 'dscope'].iloc[0]
+
+        photo_src = _resolve(photo_row['image_path'])
+        dscope_src = _resolve(dscope_row['image_path'])
+
+        photo_fname = f"{num}_photo.jpg"
+        dscope_fname = f"{num}_dscope.jpg"
+        combined_fname = f"{num}_combined.jpg"
+
+        shutil.copy2(photo_src, output_dir / photo_fname)
+        shutil.copy2(dscope_src, output_dir / dscope_fname)
+
+        photo_img = PILImage.open(photo_src).convert('RGB')
+        dscope_img = PILImage.open(dscope_src).convert('RGB')
+
+        h = min(photo_img.height, dscope_img.height)
+        photo_img = photo_img.resize(
+            (int(photo_img.width * h / photo_img.height), h), PILImage.LANCZOS)
+        dscope_img = dscope_img.resize(
+            (int(dscope_img.width * h / dscope_img.height), h), PILImage.LANCZOS)
+
+        combined = PILImage.new('RGB', (photo_img.width + dscope_img.width, h))
+        combined.paste(photo_img, (0, 0))
+        combined.paste(dscope_img, (photo_img.width, 0))
+        combined.save(output_dir / combined_fname, quality=95)
+
+        base = {'ground_truth': photo_row['y3'], 'lesion_id': lid}
+
+        rows.append({**base, 'id': f'{num}_photo', 'image_mode': 'photo',
+                     'image_path': str(output_dir / photo_fname),
+                     'original_image_name': Path(photo_src).name})
+        rows.append({**base, 'id': f'{num}_dscope', 'image_mode': 'dscope',
+                     'image_path': str(output_dir / dscope_fname),
+                     'original_image_name': Path(dscope_src).name})
+        rows.append({**base, 'id': f'{num}_combined', 'image_mode': 'combined',
+                     'image_path': str(output_dir / combined_fname),
+                     'original_image_name': f'{Path(photo_src).name}; {Path(dscope_src).name}'})
+
+    result = pd.DataFrame(rows)
+    result = result[['id', 'ground_truth', 'image_mode', 'image_path',
+                      'original_image_name', 'lesion_id']]
+
+    n_lesions = len(sampled_ids)
+    print(f"Sampled {n_lesions} lesions ({n_per_class} per class) -> {len(result)} rows")
+    print(f"Classes: {result['ground_truth'].value_counts().to_dict()}")
+    print(f"Images saved to: {output_dir}")
+    return result
 
 
 def image_tabular_mapping(df, data_dir):

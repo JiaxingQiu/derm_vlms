@@ -64,6 +64,11 @@ def process_tabular(data_dir):
     df = process_x_skintype(df)
     df = process_x_location(df)
     df = image_tabular_mapping(df, data_dir)
+
+    available = df.groupby('id_lesion')['lesion_distance'].apply(list).rename('id_lesion_images')
+    df = df.merge(available, on='id_lesion', how='left')
+    print(f"id_lesion_images example: {df['id_lesion_images'].iloc[0]}")
+
     text_cols = df.apply(lambda r: pd.Series(
         row_to_natural_text(r),
         index=["text_full","text_outcome","text_y3","text_y16","text_x_skintype","text_x_skincolor","text_x_skintone","text_x_location","text_demo","text_lesion"]
@@ -82,7 +87,13 @@ def process_id(df):
     df = df.copy()
     df['id_patient'] = df['midas_record_id'].astype(str)
     df['id_filename'] = df['midas_file_name'].astype(str)
+    df['id_lesion'] = (
+        df['midas_record_id'].astype(str) + '_'
+        + df['midas_location'].astype(str) + '_'
+        + df['midas_iscontrol'].astype(str)
+    )
     print(f"id_patient: {df['id_patient'].nunique()}")
+    print(f"id_lesion: {df['id_lesion'].nunique()}")
     print(f"id_filename: {df['id_filename'].nunique()}")
     return df
 

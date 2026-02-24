@@ -78,3 +78,11 @@ csv columns:
 | `original_image_name` | Source filename(s) from MIDAS (combined uses `; ` separator) |
 | `lesion_id` | Integer lesion identifier |
 
+
+
+## Interface Engineering
+- codes under `res_eng/` folder
+- interface1: 
+   - an image folder
+   - an excel spreadsheet, each sheet is a vlm's responses
+

@@ -38,3 +38,5 @@ log/
 test*.ipynb
 test*.py
 test*
+# Large spreadsheets
+*.xlsx

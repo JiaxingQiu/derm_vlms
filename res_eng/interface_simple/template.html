@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dermatology VLM Evaluation</title>
+<style>
+__CSS__
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Dermatology VLM Evaluation</h1>
+  <div class="hctl">
+    <span class="progress" id="prog"></span>
+    <button class="btn-exp" id="btn-exp">Export CSV</button>
+  </div>
+</header>
+
+<main>
+<div class="panels">
+
+  <!-- LEFT: Image viewer with zoom & crop -->
+  <div class="left-panel">
+    <div class="img-viewer">
+      <div class="zoom-bar">
+        <button id="btn-zin" title="Zoom in">+</button>
+        <span class="zlabel" id="zoom-lbl">100%</span>
+        <button id="btn-zout" title="Zoom out">&minus;</button>
+        <button id="btn-zreset" title="Reset zoom">&#x21BA;</button>
+        <span class="spacer"></span>
+        <span style="font-size:.72rem;color:#9ca3af;line-height:1.3;text-align:right">Use Crop to select a region of the image<br>as evidence for any part of your feedback</span>
+        <button id="btn-crop" style="font-size:.78rem">&#x2702; Crop</button>
+      </div>
+      <div class="img-container" id="img-container">
+        <img id="img" alt="lesion" />
+        <div class="crop-overlay" id="crop-overlay">
+          <div class="crop-sel" id="crop-sel"></div>
+        </div>
+      </div>
+      <div class="img-id" id="img-id"></div>
+    </div>
+  </div>
+
+  <!-- RIGHT: Response & feedback -->
+  <div class="right-panel">
+    <div class="task-sec">
+      <div class="tabs" id="tabs"></div>
+      <div class="tc">
+        <div class="field">
+          <div class="field-label">Prompt</div>
+          <div class="field-val prompt-val">You are an expert dermatologist. Please describe using dermatological terms to describe the appearance of this lesion. Please give the top 3 diagnoses in your differential.</div>
+        </div>
+        <div class="field">
+          <div class="field-label">VLM Response</div>
+          <div class="resp" id="resp"></div>
+        </div>
+        <p class="q-label">Is the AI's assessment accurate for this case? If not, what is incorrect and what should it say instead?</p>
+        <div class="survey" id="survey"></div>
+        <div class="evidence-area" id="evidence-area" style="display:none">
+          <div class="ev-title">Visual Evidence</div>
+          <div class="evidence-list" id="evidence-list"></div>
+        </div>
+        <div class="btn-row">
+          <button class="btn-copy" id="btn-copy">&#x270E; Edit AI Response</button>
+          <span style="font-size:.78rem;color:#6b7280">(Copies response into text box for editing)</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="nav">
+      <button id="btn-prev">&laquo; Previous</button>
+      <span class="status" id="status"></span>
+      <button id="btn-next">Next &raquo;</button>
+    </div>
+  </div>
+
+</div>
+</main>
+
+<script>
+__DATA__
+__JS__
+</script>
+</body>
+</html>

@@ -1,0 +1,6 @@
+openai>=1.40.0
+pillow>=10.0.0
+pandas
+pyarrow
+tqdm
+ipykernel

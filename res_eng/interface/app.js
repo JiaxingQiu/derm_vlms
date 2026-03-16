@@ -39,7 +39,7 @@ VLM_NAMES.forEach(n => {
 const surveyEl = document.getElementById('survey');
 QUESTIONS.forEach((q, i) => {
   const inp = document.createElement('textarea');
-  inp.id = 'q' + i; inp.placeholder = 'Other feedback...'; inp.rows = 4;
+  inp.id = 'q' + i; inp.placeholder = 'Other feedback (e.g., important details missing, the order of the diagnoses is wrong, or the predictive relationship between features is wrong...)'; inp.rows = 4;
   inp.dataset.cropKey = 'q' + i + '_crops';
   surveyEl.appendChild(inp);
   const evDiv = document.createElement('div');
@@ -211,14 +211,19 @@ function fmtId(id) {
   const m = id.match(/^(\d+)_combined$/);
   return m ? 'Lesion ' + m[1] : id;
 }
-function vlmDone(vlm) {
-  const imgId = VLM_DATA[vlm][S.idx].id;
-  const r = S.R[vlm]?.[imgId];
-  if (!r) return false;
-  return QUESTIONS.every((_, i) => {
-    const v = r[TASK_KEY + '_q' + (i + 1)];
-    return v && v.trim();
-  });
+function vlmStatus(vlm) {
+  const rec = VLM_DATA[vlm][S.idx];
+  const r = S.R[vlm]?.[rec.id];
+  if (!r) return 'none';
+  const diagItems = rec.diagnosis_list || [];
+  const descItems = rec.sentence_list || [];
+  const totalItems = diagItems.length + descItems.length;
+  let reviewed = 0;
+  diagItems.forEach((_, i) => { if (r['diag_' + i]) reviewed++; });
+  descItems.forEach((_, i) => { if (r['desc_' + i]) reviewed++; });
+  if (reviewed === 0) return 'none';
+  if (reviewed >= totalItems) return 'complete';
+  return 'partial';
 }
 
 /* ===== Image fit / transform ===== */
@@ -611,7 +616,10 @@ function render() {
   document.querySelectorAll('.tab').forEach(t => {
     const v = t.dataset.vlm;
     t.classList.toggle('active', v === S.vlm);
-    t.querySelector('.dot').classList.toggle('done', vlmDone(v));
+    const dot = t.querySelector('.dot');
+    const st = vlmStatus(v);
+    dot.classList.toggle('done', st === 'complete');
+    dot.classList.toggle('partial', st === 'partial');
   });
   const savedConf = getConf();
   if (savedConf !== '') { confSlider.value = savedConf; confVal.textContent = savedConf; }

@@ -371,7 +371,11 @@ function addCropEvidence(crop) {
   ta.focus();
   ta.selectionStart = ta.selectionEnd = pos + marker.length;
 
-  if (ta === qInputs[0]) collect();
+  if (qInputs.includes(ta)) { collect(); }
+  else if (ta.tagName === 'INPUT' && ta.type === 'text' && ta.dataset.cropKey) {
+    const baseKey = ta.dataset.cropKey.replace(/_crops$/, '');
+    setItemR(baseKey + '_correction', ta.value);
+  }
   persist();
 
   const evDiv = findEvidenceDiv(ta);
@@ -611,7 +615,7 @@ function render() {
   });
   const savedConf = getConf();
   if (savedConf !== '') { confSlider.value = savedConf; confVal.textContent = savedConf; }
-  else { confSlider.value = 5; confVal.textContent = '5'; }
+  else { confSlider.value = 3; confVal.textContent = '3'; }
 
   renderDiagnoses();
   renderDescription();
@@ -635,6 +639,10 @@ document.getElementById('survey').addEventListener('input', () => {
 
 /* ===== Export CSV ===== */
 function flat(s) { return String(s).replace(/[\r\n]+/g, ' ').trim(); }
+function csvCell(v) {
+  const s = String(v).replace(/[\r\n]+/g, ' ').trim();
+  return '"' + s.replace(/"/g, '""') + '"';
+}
 
 function inlineCrops(text, crops) {
   return flat(text).replace(/\[ev\s+(\d+)\]/g, (m, n) => {
@@ -644,28 +652,41 @@ function inlineCrops(text, crops) {
 }
 
 function buildFeedbackList(record, list, prefix) {
-  return (list || []).map((text, i) => {
+  const out = [];
+  (list || []).forEach((text, i) => {
     const key = prefix + '_' + i;
     const raw = record[key] || '';
-    const label = raw === 'correct' ? 'yes' : raw === 'incorrect' ? 'no' : raw === 'maybe' ? 'maybe' : '';
+    if (!raw) return;
+    const label = raw === 'correct' ? 'yes' : raw === 'incorrect' ? 'no' : 'maybe';
     const corr = record[key + '_correction'] || '';
     const crops = record[key + '_crops'] || [];
     const entry = { text: flat(text), label };
     if (raw === 'incorrect' && corr) entry.feedback = inlineCrops(corr, crops);
-    return entry;
+    out.push(entry);
   });
+  return out;
 }
 
 document.getElementById('btn-exp').onclick = () => {
   collect(); persist();
   const headers = ['id', 'model', 'raw_response', 'diagnosis_feedback',
-                    'description_feedback', 'other_feedback', 'confidence'];
-  let csv = headers.join(',') + '\n';
+                    'description_feedback', 'other_feedback', 'difficulty'];
+  const rows = [headers.map(h => csvCell(h)).join(',')];
 
-  Object.keys(VLM_DATA).forEach(vlm => {
-    const resp = S.R[vlm] || {};
+  const vlms = Object.keys(VLM_DATA);
+  const idMap = new Map();
+  vlms.forEach(vlm => {
     VLM_DATA[vlm].forEach(r => {
-      const a = resp[r.id] || {};
+      if (!idMap.has(r.id)) idMap.set(r.id, {});
+      idMap.get(r.id)[vlm] = r;
+    });
+  });
+
+  idMap.forEach((models, id) => {
+    vlms.forEach(vlm => {
+      const r = models[vlm];
+      if (!r) return;
+      const a = (S.R[vlm] || {})[id] || {};
       const diagList = buildFeedbackList(a, r.diagnosis_list, 'diag');
       const descList = buildFeedbackList(a, r.sentence_list, 'desc');
       const otherParts = [];
@@ -674,19 +695,31 @@ document.getElementById('btn-exp').onclick = () => {
         if (txt) otherParts.push(inlineCrops(txt, a['q' + qi + '_crops'] || []));
       });
       const otherFb = otherParts.join(' ');
-      const conf = a.confidence ?? '';
+      const conf = a.confidence ?? 3;
       const rawResp = flat(r[TASK_KEY] || '');
-      const vals = [r.id, vlm, rawResp, JSON.stringify(diagList),
-                    JSON.stringify(descList), otherFb, conf];
-      csv += vals.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(',') + '\n';
+      rows.push([
+        csvCell(id), csvCell(vlm), csvCell(rawResp),
+        csvCell(diagList.length ? JSON.stringify(diagList) : ''),
+        csvCell(descList.length ? JSON.stringify(descList) : ''),
+        csvCell(otherFb), csvCell(conf)
+      ].join(','));
     });
   });
 
-  const blob = new Blob([csv], { type: 'text/csv' });
+  const csv = rows.join('\n') + '\n';
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
   const link = document.createElement('a');
   link.href = URL.createObjectURL(blob);
   link.download = 'vlm_evaluation_responses.csv';
   document.body.appendChild(link); link.click(); document.body.removeChild(link);
+};
+
+/* ===== Reset ===== */
+document.getElementById('btn-reset').onclick = () => {
+  const ans = prompt('This will permanently delete all saved feedback.\nType RESET to confirm:');
+  if (ans !== 'RESET') return;
+  localStorage.removeItem(SK);
+  location.reload();
 };
 
 /* ===== Keyboard ===== */

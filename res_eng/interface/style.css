@@ -10,6 +10,9 @@ header h1{font-size:1.2rem;color:#1a1a2e;white-space:nowrap}
 .progress{font-size:.9rem;color:#555;font-weight:500}
 .btn-exp{padding:6px 14px;background:#059669;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:.85rem}
 .btn-exp:hover{background:#047857}
+.page-footer{text-align:center;padding:24px 0 16px}
+.btn-reset{padding:4px 12px;background:none;color:#9ca3af;border:1px solid #d1d5db;border-radius:5px;cursor:pointer;font-size:.72rem}
+.btn-reset:hover{color:#dc2626;border-color:#fca5a5}
 
 /* === Two-Panel Layout === */
 main{max-width:none;margin:0;padding:8px 12px}
@@ -89,12 +92,13 @@ main{max-width:none;margin:0;padding:8px 12px}
 .survey textarea{width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:.9rem;font-family:inherit;resize:vertical;min-height:60px;line-height:1.5}
 .survey textarea:focus{outline:none;border-color:#2563eb;box-shadow:0 0 0 2px rgba(37,99,235,.15)}
 
-/* === Confidence slider === */
-.confidence-row{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+/* === Difficulty slider === */
+.confidence-row{display:flex;flex-direction:column;gap:0;padding:4px 12px}
+.confidence-row>:first-child{display:flex;align-items:center;gap:8px}
 .conf-label{font-size:.82rem;font-weight:600;color:#374151;white-space:nowrap}
 .conf-val{font-size:.85rem;font-weight:700;color:#2563eb;min-width:16px;text-align:center}
-.conf-slider{flex:1;max-width:180px;accent-color:#2563eb;cursor:pointer}
-.conf-range{font-size:.68rem;color:#9ca3af;white-space:nowrap}
+.conf-slider{width:100%;accent-color:#2563eb;cursor:pointer;margin:0;height:16px}
+.conf-range-labels{display:flex;justify-content:space-between;font-size:.65rem;color:#9ca3af;padding:0 2px}
 
 /* === Per-field evidence thumbnails === */
 .field-evidence{display:flex;flex-wrap:wrap;gap:5px;margin-top:5px}

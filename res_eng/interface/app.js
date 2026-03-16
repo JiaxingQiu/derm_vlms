@@ -23,8 +23,6 @@ const containerEl = document.getElementById('img-container');
 const cropOverlay = document.getElementById('crop-overlay');
 const cropSel     = document.getElementById('crop-sel');
 const zoomLbl     = document.getElementById('zoom-lbl');
-const evArea      = document.getElementById('evidence-area');
-const evList      = document.getElementById('evidence-list');
 
 /* ===== VLM tabs ===== */
 const VLM_NAMES = Object.keys(VLM_DATA);
@@ -41,8 +39,13 @@ VLM_NAMES.forEach(n => {
 const surveyEl = document.getElementById('survey');
 QUESTIONS.forEach((q, i) => {
   const inp = document.createElement('textarea');
-  inp.id = 'q' + i; inp.placeholder = 'Your response...'; inp.rows = 4;
+  inp.id = 'q' + i; inp.placeholder = 'Other feedback...'; inp.rows = 4;
+  inp.dataset.cropKey = 'q' + i + '_crops';
   surveyEl.appendChild(inp);
+  const evDiv = document.createElement('div');
+  evDiv.className = 'field-evidence';
+  evDiv.id = 'q' + i + '-ev';
+  surveyEl.appendChild(evDiv);
 });
 const qInputs = QUESTIONS.map((_, i) => document.getElementById('q' + i));
 
@@ -72,13 +75,137 @@ function setR(i, v) {
 function collect() { qInputs.forEach((el, i) => setR(i, el.value)); }
 function persist() { localStorage.setItem(SK, JSON.stringify(S.R)); }
 
-function getCrops() {
-  return S.R[S.vlm]?.[row().id]?.crops || [];
+/* ===== Per-field crop storage ===== */
+function getFieldCrops(cropKey) {
+  return S.R[S.vlm]?.[row().id]?.[cropKey] || [];
 }
-function setCrops(crops) {
+function setFieldCrops(cropKey, crops) {
   if (!S.R[S.vlm]) S.R[S.vlm] = {};
   if (!S.R[S.vlm][row().id]) S.R[S.vlm][row().id] = {};
-  S.R[S.vlm][row().id].crops = crops;
+  S.R[S.vlm][row().id][cropKey] = crops;
+}
+
+/* ===== Review-row state helpers ===== */
+function getItemR(key) { return S.R[S.vlm]?.[row().id]?.[key] || ''; }
+function setItemR(key, val) {
+  if (!S.R[S.vlm]) S.R[S.vlm] = {};
+  if (!S.R[S.vlm][row().id]) S.R[S.vlm][row().id] = {};
+  S.R[S.vlm][row().id][key] = val;
+}
+
+/**
+ * Render an interactive check/maybe/cross list.
+ */
+function renderItemList(containerId, sectionId, items, prefix, numbered, rerender) {
+  const listEl = document.getElementById(containerId);
+  const sectionEl = document.getElementById(sectionId);
+
+  if (!items.length) {
+    sectionEl.style.display = 'none';
+    return;
+  }
+  sectionEl.style.display = '';
+  listEl.innerHTML = '';
+
+  items.forEach((text, idx) => {
+    const key = prefix + '_' + idx;
+    const status = getItemR(key);
+    const correction = getItemR(key + '_correction') || '';
+
+    const rowDiv = document.createElement('div');
+    rowDiv.className = 'review-row';
+    if (status) rowDiv.classList.add('rev-' + status);
+
+    if (numbered) {
+      const numEl = document.createElement('span');
+      numEl.className = 'rev-num';
+      numEl.textContent = (idx + 1) + '.';
+      rowDiv.appendChild(numEl);
+    }
+
+    const textEl = document.createElement('span');
+    textEl.className = 'rev-text';
+    textEl.textContent = text;
+    rowDiv.appendChild(textEl);
+
+    const actions = document.createElement('div');
+    actions.className = 'rev-actions';
+
+    const btnOk = document.createElement('button');
+    btnOk.className = 'rev-btn rev-ok' + (status === 'correct' ? ' active' : '');
+    btnOk.innerHTML = '&#x2713;';
+    btnOk.dataset.tip = 'Correct';
+    const clearCorrection = () => {
+      setItemR(key + '_correction', '');
+      setFieldCrops(key + '_crops', []);
+    };
+
+    btnOk.onclick = () => {
+      setItemR(key, status === 'correct' ? '' : 'correct');
+      clearCorrection();
+      persist(); rerender(); showSaved();
+    };
+
+    const btnMaybe = document.createElement('button');
+    btnMaybe.className = 'rev-btn rev-maybe' + (status === 'maybe' ? ' active' : '');
+    btnMaybe.innerHTML = '?';
+    btnMaybe.dataset.tip = 'Maybe';
+    btnMaybe.onclick = () => {
+      setItemR(key, status === 'maybe' ? '' : 'maybe');
+      clearCorrection();
+      persist(); rerender(); showSaved();
+    };
+
+    const btnNo = document.createElement('button');
+    btnNo.className = 'rev-btn rev-no' + (status === 'incorrect' ? ' active' : '');
+    btnNo.innerHTML = '&#x2717;';
+    btnNo.dataset.tip = 'Incorrect';
+    btnNo.onclick = () => {
+      setItemR(key, status === 'incorrect' ? '' : 'incorrect');
+      if (status === 'incorrect') clearCorrection();
+      persist(); rerender(); showSaved();
+    };
+
+    actions.appendChild(btnOk);
+    actions.appendChild(btnNo);
+    actions.appendChild(btnMaybe);
+    rowDiv.appendChild(actions);
+    listEl.appendChild(rowDiv);
+
+    if (status === 'incorrect') {
+      const corrDiv = document.createElement('div');
+      corrDiv.className = 'rev-correction';
+
+      const inp = document.createElement('input');
+      inp.type = 'text';
+      inp.placeholder = 'What should it say instead?';
+      inp.value = correction;
+      const cropKey = key + '_crops';
+      inp.dataset.cropKey = cropKey;
+      inp.oninput = () => {
+        setItemR(key + '_correction', inp.value);
+        syncFieldCrops(inp);
+        persist(); showSaved('\u2713 Auto-saved');
+      };
+      corrDiv.appendChild(inp);
+
+      const evDiv = document.createElement('div');
+      evDiv.className = 'field-evidence';
+      corrDiv.appendChild(evDiv);
+      renderFieldEvidenceInto(evDiv, cropKey, inp);
+
+      listEl.appendChild(corrDiv);
+      if (!correction) inp.focus();
+    }
+  });
+}
+
+function renderDiagnoses() {
+  renderItemList('diag-list', 'diag-section', row().diagnosis_list || [], 'diag', true, renderDiagnoses);
+}
+
+function renderDescription() {
+  renderItemList('desc-list', 'desc-section', row().sentence_list || [], 'desc', false, renderDescription);
 }
 
 function fmtId(id) {
@@ -223,70 +350,87 @@ cropOverlay.addEventListener('mouseup', e => {
   containerEl.classList.remove('crop-active');
 });
 
-/* ===== Evidence management ===== */
-let cachedImg = null, cachedImgId = null;
-
-function ensureCachedImg(cb) {
-  const id = row().id;
-  if (cachedImgId === id && cachedImg && cachedImg.complete) { cb(); return; }
-  cachedImg = new Image();
-  cachedImg.onload = () => { cachedImgId = id; cb(); };
-  cachedImg.src = IMAGES[id];
-}
-
-function addCropEvidence(crop) {
-  const crops = [...getCrops(), crop];
-  setCrops(crops);
-  persist();
-  renderEvidence();
-  const ta = qInputs[0];
-  if (ta) {
-    const marker = '[Evidence ' + crops.length + '] ';
-    const pos = ta.selectionStart || ta.value.length;
-    ta.value = ta.value.slice(0, pos) + marker + ta.value.slice(pos);
-    ta.focus();
-    ta.selectionStart = ta.selectionEnd = pos + marker.length;
-    collect(); persist();
+/* ===== Track last-focused text input ===== */
+let lastFocusedInput = null;
+document.addEventListener('focusin', e => {
+  if (e.target.tagName === 'TEXTAREA' || (e.target.tagName === 'INPUT' && e.target.type === 'text')) {
+    lastFocusedInput = e.target;
   }
+});
+
+/* ===== Per-field evidence ===== */
+function addCropEvidence(crop) {
+  const ta = lastFocusedInput || qInputs[0];
+  if (!ta) return;
+  const cropKey = ta.dataset.cropKey || 'q0_crops';
+  const crops = [...getFieldCrops(cropKey), crop];
+  setFieldCrops(cropKey, crops);
+
+  const marker = '[ev ' + crops.length + '] ';
+  const pos = ta.selectionStart || ta.value.length;
+  ta.value = ta.value.slice(0, pos) + marker + ta.value.slice(pos);
+  ta.focus();
+  ta.selectionStart = ta.selectionEnd = pos + marker.length;
+
+  if (ta === qInputs[0]) collect();
+  persist();
+
+  const evDiv = findEvidenceDiv(ta);
+  if (evDiv) renderFieldEvidenceInto(evDiv, cropKey, ta);
   showSaved();
 }
 
-function removeCropEvidence(idx) {
-  const oldLen = getCrops().length;
-  const crops = getCrops().filter((_, i) => i !== idx);
-  setCrops(crops);
-  const ta = qInputs[0];
-  if (ta) {
-    let text = ta.value;
-    const removed = idx + 1;
-    text = text.replace(new RegExp('\\[Evidence\\s+' + removed + '\\]\\s?', 'g'), '');
-    for (let n = removed + 1; n <= oldLen; n++) {
-      text = text.replace(new RegExp('\\[Evidence\\s+' + n + '\\]', 'g'), '[Evidence ' + (n - 1) + ']');
-    }
-    ta.value = text;
-    collect();
+function findEvidenceDiv(field) {
+  if (field.id && document.getElementById(field.id + '-ev')) {
+    return document.getElementById(field.id + '-ev');
   }
-  persist();
-  renderEvidence();
+  const parent = field.parentElement;
+  if (parent) return parent.querySelector('.field-evidence');
+  return null;
 }
 
-function renderEvidence() {
-  const crops = getCrops();
-  evArea.style.display = crops.length ? '' : 'none';
-  evList.innerHTML = '';
+function removeFieldCrop(cropKey, idx, fieldEl, evDiv) {
+  const oldLen = getFieldCrops(cropKey).length;
+  const crops = getFieldCrops(cropKey).filter((_, i) => i !== idx);
+  setFieldCrops(cropKey, crops);
+
+  if (fieldEl) {
+    let text = fieldEl.value;
+    const removed = idx + 1;
+    text = text.replace(new RegExp('\\[ev\\s+' + removed + '\\]\\s?', 'g'), '');
+    for (let n = removed + 1; n <= oldLen; n++) {
+      text = text.replace(new RegExp('\\[ev\\s+' + n + '\\]', 'g'), '[ev ' + (n - 1) + ']');
+    }
+    fieldEl.value = text;
+    if (fieldEl === qInputs[0]) collect();
+  }
+  persist();
+  if (evDiv) renderFieldEvidenceInto(evDiv, cropKey, fieldEl);
+  showSaved();
+}
+
+function renderFieldEvidenceInto(container, cropKey, fieldEl) {
+  const crops = getFieldCrops(cropKey);
+  container.innerHTML = '';
   if (!crops.length) return;
 
-  ensureCachedImg(() => {
-    const nw = cachedImg.naturalWidth, nh = cachedImg.naturalHeight;
+  const imgSrc = IMAGES[row().id];
+  const im = new Image();
+  im.onload = () => {
+    const nw = im.naturalWidth, nh = im.naturalHeight;
     crops.forEach((c, idx) => {
       const cropPxW = c.w * nw, cropPxH = c.h * nh;
-      const maxThumb = 100;
+      const maxThumb = 48;
       const sc = Math.min(maxThumb / cropPxW, maxThumb / cropPxH, 1);
       const dispW = Math.max(1, cropPxW * sc);
       const dispH = Math.max(1, cropPxH * sc);
 
       const div = document.createElement('div');
       div.className = 'evidence-item';
+      div.dataset.prevSrc = imgSrc;
+      div.dataset.prevCrop = JSON.stringify(c);
+      div.dataset.prevNw = nw;
+      div.dataset.prevNh = nh;
 
       const wrapper = document.createElement('div');
       wrapper.className = 'ev-crop';
@@ -294,37 +438,152 @@ function renderEvidence() {
       wrapper.style.height = dispH + 'px';
 
       const thumb = document.createElement('img');
-      thumb.src = IMAGES[row().id];
+      thumb.src = imgSrc;
       thumb.style.width  = (nw * sc) + 'px';
       thumb.style.height = (nh * sc) + 'px';
       thumb.style.left   = (-c.x * nw * sc) + 'px';
       thumb.style.top    = (-c.y * nh * sc) + 'px';
-
       wrapper.appendChild(thumb);
 
       const lbl = document.createElement('div');
       lbl.className = 'ev-label';
-      lbl.textContent = 'Evidence ' + (idx + 1);
+      lbl.textContent = 'Ev ' + (idx + 1);
 
       const rm = document.createElement('button');
       rm.className = 'ev-remove';
       rm.innerHTML = '&times;';
-      rm.onclick = () => { removeCropEvidence(idx); };
+      rm.onclick = () => { removeFieldCrop(cropKey, idx, fieldEl, container); };
 
       div.appendChild(wrapper);
       div.appendChild(lbl);
       div.appendChild(rm);
-      evList.appendChild(div);
+      container.appendChild(div);
     });
-  });
+  };
+  im.src = imgSrc;
 }
 
-/* ===== Edit AI response ===== */
-document.getElementById('btn-copy').onclick = () => {
-  const resp = document.getElementById('resp').textContent;
-  if (qInputs.length > 0) { qInputs[0].value = resp; qInputs[0].focus(); collect(); persist(); }
-  showSaved('\u2713 Copied');
-};
+/* ===== Floating preview on hover ===== */
+const floatPrev = document.createElement('div');
+floatPrev.className = 'ev-float-preview';
+document.body.appendChild(floatPrev);
+
+document.addEventListener('mouseenter', e => {
+  const item = e.target.closest('.evidence-item');
+  if (!item || !item.dataset.prevCrop) return;
+  const c = JSON.parse(item.dataset.prevCrop);
+  const nw = +item.dataset.prevNw, nh = +item.dataset.prevNh;
+  const cropPxW = c.w * nw, cropPxH = c.h * nh;
+  const prevMax = 240;
+  const psc = Math.min(prevMax / cropPxW, prevMax / cropPxH, 1);
+  const pW = Math.max(1, cropPxW * psc);
+  const pH = Math.max(1, cropPxH * psc);
+
+  floatPrev.style.width = pW + 'px';
+  floatPrev.style.height = pH + 'px';
+  floatPrev.innerHTML = '';
+  const img = document.createElement('img');
+  img.src = item.dataset.prevSrc;
+  img.style.width  = (nw * psc) + 'px';
+  img.style.height = (nh * psc) + 'px';
+  img.style.left   = (-c.x * nw * psc) + 'px';
+  img.style.top    = (-c.y * nh * psc) + 'px';
+  floatPrev.appendChild(img);
+
+  const rect = item.getBoundingClientRect();
+  let top = rect.top - pH - 8;
+  if (top < 4) top = rect.bottom + 8;
+  let left = rect.left + rect.width / 2 - pW / 2;
+  left = Math.max(4, Math.min(left, window.innerWidth - pW - 4));
+  floatPrev.style.top = top + 'px';
+  floatPrev.style.left = left + 'px';
+  floatPrev.style.display = 'block';
+}, true);
+
+document.addEventListener('mouseleave', e => {
+  const item = e.target.closest('.evidence-item');
+  if (item) floatPrev.style.display = 'none';
+}, true);
+
+/* ===== Sync: text edits → remove orphaned crops ===== */
+function syncFieldCrops(fieldEl) {
+  const cropKey = fieldEl.dataset.cropKey;
+  if (!cropKey) return;
+  const crops = getFieldCrops(cropKey);
+  if (!crops.length) return;
+
+  const present = new Set();
+  const re = /\[ev\s+(\d+)\]/g;
+  let m;
+  while ((m = re.exec(fieldEl.value)) !== null) present.add(parseInt(m[1]));
+  if (present.size === crops.length) return;
+
+  const kept = [];
+  const oldToNew = {};
+  for (let i = 0; i < crops.length; i++) {
+    if (present.has(i + 1)) { oldToNew[i + 1] = kept.length + 1; kept.push(crops[i]); }
+  }
+  setFieldCrops(cropKey, kept);
+
+  let text = fieldEl.value;
+  for (const [old, nw] of Object.entries(oldToNew)) {
+    if (+old !== nw) text = text.replace(new RegExp('\\[ev\\s+' + old + '\\]', 'g'), '[ev ' + nw + ']');
+  }
+  fieldEl.value = text;
+  if (fieldEl === qInputs[0]) collect();
+  persist();
+
+  const evDiv = findEvidenceDiv(fieldEl);
+  if (evDiv) renderFieldEvidenceInto(evDiv, cropKey, fieldEl);
+}
+
+/* ===== Atomic delete of [ev N] markers ===== */
+document.addEventListener('keydown', e => {
+  const el = e.target;
+  if (!(el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && el.type === 'text'))) return;
+  if (e.key !== 'Backspace' && e.key !== 'Delete') return;
+
+  const text = el.value;
+  const pos = el.selectionStart;
+  const selEnd = el.selectionEnd;
+  if (pos !== selEnd) return;
+
+  const re = /\[ev\s+\d+\]/g;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    const start = m.index, end = m.index + m[0].length;
+    const hit = (e.key === 'Backspace')
+      ? (pos > start && pos <= end)
+      : (pos >= start && pos < end);
+    if (hit) {
+      e.preventDefault();
+      el.value = text.slice(0, start) + text.slice(end);
+      el.selectionStart = el.selectionEnd = start;
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      return;
+    }
+  }
+});
+
+
+/* ===== Confidence slider ===== */
+const confSlider = document.getElementById('conf-slider');
+const confVal = document.getElementById('conf-val');
+
+function getConf() { return S.R[S.vlm]?.[row().id]?.confidence ?? ''; }
+function setConf(v) {
+  if (!S.R[S.vlm]) S.R[S.vlm] = {};
+  if (!S.R[S.vlm][row().id]) S.R[S.vlm][row().id] = {};
+  S.R[S.vlm][row().id].confidence = v;
+}
+
+confSlider.addEventListener('input', () => {
+  const v = confSlider.value;
+  confVal.textContent = v;
+  setConf(v);
+  persist();
+  showSaved('\u2713 Auto-saved');
+});
 
 /* ===== Status ===== */
 let saveTimer;
@@ -342,8 +601,7 @@ function render() {
   imgEl.onload = fitImage;
   imgEl.src = IMAGES[r.id];
   resetView();
-  document.getElementById('img-id').textContent = fmtId(r.id);
-  document.getElementById('prog').textContent = 'Lesion ' + (S.idx + 1) + ' of ' + data.length;
+  document.getElementById('img-id').textContent = 'Lesion ' + (S.idx + 1) + ' of ' + data.length;
   document.getElementById('btn-prev').disabled = S.idx === 0;
   document.getElementById('btn-next').disabled = S.idx === data.length - 1;
   document.querySelectorAll('.tab').forEach(t => {
@@ -351,45 +609,27 @@ function render() {
     t.classList.toggle('active', v === S.vlm);
     t.querySelector('.dot').classList.toggle('done', vlmDone(v));
   });
-  document.getElementById('resp').textContent = cleanText(r[TASK_KEY]);
-  qInputs.forEach((el, i) => { el.value = getR(i); });
-  renderEvidence();
+  const savedConf = getConf();
+  if (savedConf !== '') { confSlider.value = savedConf; confVal.textContent = savedConf; }
+  else { confSlider.value = 5; confVal.textContent = '5'; }
+
+  renderDiagnoses();
+  renderDescription();
+  qInputs.forEach((el, i) => {
+    el.value = getR(i);
+    const evDiv = document.getElementById('q' + i + '-ev');
+    if (evDiv) renderFieldEvidenceInto(evDiv, el.dataset.cropKey, el);
+  });
 }
 
 /* ===== Navigation ===== */
 document.getElementById('btn-prev').onclick = () => { collect(); persist(); if (S.idx > 0) { S.idx--; render(); } };
 document.getElementById('btn-next').onclick = () => { collect(); persist(); if (S.idx < VLM_DATA[S.vlm].length - 1) { S.idx++; render(); } };
 
-/* ===== Sync: text edits remove crops ===== */
-function syncCropsFromText() {
-  const ta = qInputs[0];
-  if (!ta) return;
-  const crops = getCrops();
-  if (!crops.length) return;
-  const present = new Set();
-  const re = /\[Evidence\s+(\d+)\]/g;
-  let m;
-  while ((m = re.exec(ta.value)) !== null) present.add(parseInt(m[1]));
-  if (present.size === crops.length) return;
-  const kept = [];
-  const oldToNew = {};
-  for (let i = 0; i < crops.length; i++) {
-    if (present.has(i + 1)) { oldToNew[i + 1] = kept.length + 1; kept.push(crops[i]); }
-  }
-  setCrops(kept);
-  let text = ta.value;
-  for (const [old, nw] of Object.entries(oldToNew)) {
-    if (+old !== nw) text = text.replace(new RegExp('\\[Evidence\\s+' + old + '\\]', 'g'), '[Evidence ' + nw + ']');
-  }
-  ta.value = text;
-  collect(); persist();
-  renderEvidence();
-}
-
 /* ===== Auto-save ===== */
 document.getElementById('survey').addEventListener('input', () => {
   collect(); persist();
-  syncCropsFromText();
+  qInputs.forEach(el => syncFieldCrops(el));
   showSaved('\u2713 Auto-saved');
 });
 
@@ -398,13 +638,29 @@ document.getElementById('btn-exp').onclick = () => {
   collect(); persist();
   const qHeaders = QUESTIONS.map((_, i) => 'Q' + (i + 1));
   const qKeys = QUESTIONS.map((_, i) => rkey(i));
-  let csv = ['id', 'model', 'response', ...qHeaders, 'crop_coordinates'].join(',') + '\n';
+  let csv = ['id', 'model', 'response', ...qHeaders, 'confidence', 'diagnosis_judgments', 'description_judgments', 'crop_coordinates'].join(',') + '\n';
   Object.keys(VLM_DATA).forEach(vlm => {
     const rows = VLM_DATA[vlm], resp = S.R[vlm] || {};
     rows.forEach(r => {
       const a = resp[r.id] || {};
-      const crops = a.crops ? JSON.stringify(a.crops) : '';
-      const vals = [r.id, vlm, r[TASK_KEY], ...qKeys.map(c => a[c] || ''), crops];
+      const allCrops = [];
+      Object.keys(a).forEach(k => {
+        if (k.endsWith('_crops') && Array.isArray(a[k])) allCrops.push(...a[k]);
+      });
+      const buildJudgments = (list, prefix) => {
+        const j = {};
+        (list || []).forEach((text, i) => {
+          const st = a[prefix + '_' + i] || '';
+          const corr = a[prefix + '_' + i + '_correction'] || '';
+          if (st) j[i] = { text: text, status: st, correction: corr };
+        });
+        return Object.keys(j).length ? JSON.stringify(j) : '';
+      };
+      const diagStr = buildJudgments(r.diagnosis_list, 'diag');
+      const descStr = buildJudgments(r.sentence_list, 'desc');
+      const cropStr = allCrops.length ? JSON.stringify(allCrops) : '';
+      const conf = a.confidence ?? '';
+      const vals = [r.id, vlm, r[TASK_KEY], ...qKeys.map(c => a[c] || ''), conf, diagStr, descStr, cropStr];
       csv += vals.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(',') + '\n';
     });
   });

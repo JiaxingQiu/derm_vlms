@@ -195,7 +195,6 @@ function renderItemList(containerId, sectionId, items, prefix, numbered, rerende
       renderFieldEvidenceInto(evDiv, cropKey, inp);
 
       listEl.appendChild(corrDiv);
-      if (!correction) inp.focus();
     }
   });
 }
@@ -390,6 +389,7 @@ function findEvidenceDiv(field) {
 }
 
 function removeFieldCrop(cropKey, idx, fieldEl, evDiv) {
+  floatPrev.style.display = 'none';
   const oldLen = getFieldCrops(cropKey).length;
   const crops = getFieldCrops(cropKey).filter((_, i) => i !== idx);
   setFieldCrops(cropKey, crops);

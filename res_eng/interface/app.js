@@ -634,36 +634,54 @@ document.getElementById('survey').addEventListener('input', () => {
 });
 
 /* ===== Export CSV ===== */
+function flat(s) { return String(s).replace(/[\r\n]+/g, ' ').trim(); }
+
+function inlineCrops(text, crops) {
+  return flat(text).replace(/\[ev\s+(\d+)\]/g, (m, n) => {
+    const c = (crops || [])[parseInt(n) - 1];
+    return c ? '[crop:' + JSON.stringify(c) + ']' : m;
+  });
+}
+
+function buildFeedbackList(record, list, prefix) {
+  return (list || []).map((text, i) => {
+    const key = prefix + '_' + i;
+    const raw = record[key] || '';
+    const label = raw === 'correct' ? 'yes' : raw === 'incorrect' ? 'no' : raw === 'maybe' ? 'maybe' : '';
+    const corr = record[key + '_correction'] || '';
+    const crops = record[key + '_crops'] || [];
+    const entry = { text: flat(text), label };
+    if (raw === 'incorrect' && corr) entry.feedback = inlineCrops(corr, crops);
+    return entry;
+  });
+}
+
 document.getElementById('btn-exp').onclick = () => {
   collect(); persist();
-  const qHeaders = QUESTIONS.map((_, i) => 'Q' + (i + 1));
-  const qKeys = QUESTIONS.map((_, i) => rkey(i));
-  let csv = ['id', 'model', 'response', ...qHeaders, 'confidence', 'diagnosis_judgments', 'description_judgments', 'crop_coordinates'].join(',') + '\n';
+  const headers = ['id', 'model', 'raw_response', 'diagnosis_feedback',
+                    'description_feedback', 'other_feedback', 'confidence'];
+  let csv = headers.join(',') + '\n';
+
   Object.keys(VLM_DATA).forEach(vlm => {
-    const rows = VLM_DATA[vlm], resp = S.R[vlm] || {};
-    rows.forEach(r => {
+    const resp = S.R[vlm] || {};
+    VLM_DATA[vlm].forEach(r => {
       const a = resp[r.id] || {};
-      const allCrops = [];
-      Object.keys(a).forEach(k => {
-        if (k.endsWith('_crops') && Array.isArray(a[k])) allCrops.push(...a[k]);
+      const diagList = buildFeedbackList(a, r.diagnosis_list, 'diag');
+      const descList = buildFeedbackList(a, r.sentence_list, 'desc');
+      const otherParts = [];
+      QUESTIONS.forEach((_, qi) => {
+        const txt = a[TASK_KEY + '_q' + (qi + 1)] || '';
+        if (txt) otherParts.push(inlineCrops(txt, a['q' + qi + '_crops'] || []));
       });
-      const buildJudgments = (list, prefix) => {
-        const j = {};
-        (list || []).forEach((text, i) => {
-          const st = a[prefix + '_' + i] || '';
-          const corr = a[prefix + '_' + i + '_correction'] || '';
-          if (st) j[i] = { text: text, status: st, correction: corr };
-        });
-        return Object.keys(j).length ? JSON.stringify(j) : '';
-      };
-      const diagStr = buildJudgments(r.diagnosis_list, 'diag');
-      const descStr = buildJudgments(r.sentence_list, 'desc');
-      const cropStr = allCrops.length ? JSON.stringify(allCrops) : '';
+      const otherFb = otherParts.join(' ');
       const conf = a.confidence ?? '';
-      const vals = [r.id, vlm, r[TASK_KEY], ...qKeys.map(c => a[c] || ''), conf, diagStr, descStr, cropStr];
+      const rawResp = flat(r[TASK_KEY] || '');
+      const vals = [r.id, vlm, rawResp, JSON.stringify(diagList),
+                    JSON.stringify(descList), otherFb, conf];
       csv += vals.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(',') + '\n';
     });
   });
+
   const blob = new Blob([csv], { type: 'text/csv' });
   const link = document.createElement('a');
   link.href = URL.createObjectURL(blob);

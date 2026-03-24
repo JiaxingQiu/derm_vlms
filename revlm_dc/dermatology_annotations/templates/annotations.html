@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+
+{% block title %}Annotations{% endblock %}
+
+{% block content %}
+<h1>Annotations</h1>
+<p>Logged in as: {{ login_id }}</p>
+
+{% if show_done_confirmation %}
+    <h2>You have reached the end of all cases</h2>
+    <p>Are you done with your annotations?</p>
+
+    <form method="post">
+        {% csrf_token %}
+        <button type="submit" name="action" value="done_yes">Yes</button>
+        <button type="submit" name="action" value="done_no">No</button>
+    </form>
+
+{% elif no_cases %}
+<p>No cases assigned.</p>
+
+{% else %}
+    <p>Case {{ current_index|add:1 }} of {{ total_cases }}</p>
+    <p><strong>Case id:</strong> {{ case_id }}</p>
+
+    <div>
+        <img src="/media/{{ case_data.image_path }}" alt="{{ case_id }}" style="max-width: 500px;">
+    </div>
+
+    <h3>Model A</h3>
+    <p>{{ case_data.model_a }}</p>
+
+    <h3>Model B</h3>
+    <p>{{ case_data.model_b }}</p>
+
+    <form method="post">
+        {% csrf_token %}
+
+        <div>
+            <label>
+                <input type="checkbox" name="model_response_correct" {% if annotation.model_response_correct %}checked{% endif %}>
+                Model response correct
+            </label>
+        </div>
+
+        <div>
+            <label for="textual_feedback">Textual feedback</label><br>
+            <textarea name="textual_feedback" id="textual_feedback" rows="6"
+                cols="80">{{ annotation.textual_feedback|default_if_none:"" }}</textarea>
+        </div>
+
+        <div>
+            <label for="visual_feedback">Visual feedback</label><br>
+            <textarea name="visual_feedback" id="visual_feedback" rows="6"
+                cols="80">{{ annotation.visual_feedback|default_if_none:"" }}</textarea>
+        </div>
+
+        <div style="margin-top: 20px;">
+            {% if has_previous %}
+            <button type="submit" name="action" value="previous">Previous</button>
+            {% endif %}
+
+            <button type="submit" name="action" value="save">Save</button>
+
+            {% if has_next %}
+            <button type="submit" name="action" value="next">Next</button>
+            {% else %}
+            <button type="submit" name="action" value="finish">Finish</button>
+            {% endif %}
+        </div>
+    </form>
+{% endif %}
+
+<p><a href="{% url 'logout' %}">Logout</a></p>
+{% endblock %}

@@ -25,6 +25,7 @@ ssh_rivanna
 
 # Python / Jupyter
 __pycache__/
+archive/
 .ipynb_checkpoints/
 *.pyc
 
@@ -40,3 +41,9 @@ test*.py
 test*
 # Large spreadsheets
 *.xlsx
+
+# django files
+revlm_dc/data/
+revlm_dc/images/
+db.sqlite3
+revlm_dc/db.sqlite3

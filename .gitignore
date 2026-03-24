@@ -35,6 +35,8 @@ archive/
 # Logs
 log/
 
+*.zip
+
 # Scratch / test files
 test*.ipynb
 test*.py

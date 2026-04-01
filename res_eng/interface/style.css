@@ -40,15 +40,10 @@ main{max-width:none;margin:0;padding:8px 12px}
 .crop-sel{position:absolute;border:2px solid #2563eb;background:rgba(37,99,235,.12);pointer-events:none}
 .img-id{padding:6px 12px;font-size:.82rem;color:#888;text-align:center;background:#f9fafb;border-top:1px solid #e5e7eb}
 
-/* === VLM Tabs === */
+/* === VLM Badge === */
 .task-sec{background:#fff;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.08);margin-bottom:18px;overflow:hidden}
-.tabs{display:flex;border-bottom:2px solid #e5e7eb}
-.tab{flex:1;padding:11px;text-align:center;background:#f9fafb;border:none;cursor:pointer;font-size:.9rem;font-weight:500;color:#6b7280;transition:all .2s}
-.tab:hover{background:#f3f4f6}
-.tab.active{background:#fff;color:#2563eb;border-bottom:2px solid #2563eb;margin-bottom:-2px}
-.tab .dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-left:6px;background:#d1d5db;vertical-align:middle}
-.tab .dot.partial{background:#dc2626}
-.tab .dot.done{background:#059669}
+.vlm-badge{padding:10px 20px;background:linear-gradient(135deg,#eef2ff,#e0e7ff);border-bottom:2px solid #c7d2fe;font-size:.95rem;font-weight:600;color:#4338ca}
+.vlm-badge .vlm-tag{font-size:.75rem;text-transform:uppercase;letter-spacing:.06em;color:#6b7280;font-weight:500;margin-right:6px}
 
 /* === Content Area === */
 .tc{padding:12px 20px}
@@ -86,6 +81,9 @@ main{max-width:none;margin:0;padding:8px 12px}
 .rev-correction input{width:100%;padding:6px 10px;border:1px solid #fca5a5;border-radius:6px;font-size:.88rem;font-family:inherit;background:#fff;color:#334155}
 .rev-correction input:focus{outline:none;border-color:#dc2626;box-shadow:0 0 0 2px rgba(220,38,38,.12)}
 .rev-correction input::placeholder{color:#9ca3af}
+.rev-correction-maybe{background:#fffbeb}
+.rev-correction-maybe input{border-color:#fcd34d}
+.rev-correction-maybe input:focus{border-color:#d97706;box-shadow:0 0 0 2px rgba(217,119,6,.12)}
 
 /* === Survey / Feedback === */
 .q-label{font-size:.9rem;font-weight:500;color:#374151;margin-bottom:8px}
@@ -93,13 +91,6 @@ main{max-width:none;margin:0;padding:8px 12px}
 .survey textarea{width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:.9rem;font-family:inherit;resize:vertical;min-height:60px;line-height:1.5}
 .survey textarea:focus{outline:none;border-color:#2563eb;box-shadow:0 0 0 2px rgba(37,99,235,.15)}
 
-/* === Difficulty slider === */
-.confidence-row{display:flex;flex-direction:column;gap:0;padding:4px 12px}
-.confidence-row>:first-child{display:flex;align-items:center;gap:8px}
-.conf-label{font-size:.82rem;font-weight:600;color:#374151;white-space:nowrap}
-.conf-val{font-size:.85rem;font-weight:700;color:#2563eb;min-width:16px;text-align:center}
-.conf-slider{width:100%;accent-color:#2563eb;cursor:pointer;margin:0;height:16px}
-.conf-range-labels{display:flex;justify-content:space-between;font-size:.65rem;color:#9ca3af;padding:0 2px}
 
 /* === Per-field evidence thumbnails === */
 .field-evidence{display:flex;flex-wrap:wrap;gap:5px;margin-top:5px}
@@ -123,8 +114,13 @@ main{max-width:none;margin:0;padding:8px 12px}
 .nav button{padding:9px 26px;border-radius:8px;font-size:.93rem;cursor:pointer;font-weight:500;border:1px solid #d1d5db;background:#fff;color:#374151;transition:all .15s}
 .nav button:hover:not(:disabled){background:#f3f4f6}
 .nav button:disabled{opacity:.35;cursor:not-allowed}
+.nav-center{display:flex;flex-direction:column;align-items:center;gap:2px;min-width:100px}
+.nav-info{font-size:.82rem;color:#6b7280;font-weight:500}
 .status{font-size:.8rem;color:#059669;font-weight:500;min-width:80px;text-align:center;opacity:0;transition:opacity .3s}
 .status.show{opacity:1}
+.nav-warning{display:none;margin:8px auto 0;max-width:420px;padding:9px 16px;background:#fef3cd;color:#92400e;border:1px solid #fcd34d;border-radius:8px;font-size:.85rem;text-align:center;font-weight:500;animation:warnShake .4s ease}
+.nav-warning.show{display:block}
+@keyframes warnShake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-4px)}40%,80%{transform:translateX(4px)}}
 
 /* === Responsive === */
 @media(max-width:960px){

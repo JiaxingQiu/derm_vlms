@@ -14,6 +14,7 @@ __CSS__
   <h1>Dermatology VLM Evaluation</h1>
   <span class="header-prompt">Prompt to AI: You are an expert dermatologist. Please describe using dermatological terms to describe the appearance of this lesion. Please give the top 3 diagnoses in your differential.</span>
   <div class="hctl">
+    <span class="progress" id="progress"></span>
     <button class="btn-exp" id="btn-exp">Export CSV</button>
   </div>
 </header>
@@ -40,27 +41,21 @@ __CSS__
       </div>
       <div class="img-id" id="img-id"></div>
     </div>
-    <div class="confidence-row">
-      <div>
-        <label class="conf-label">Difficulty</label>
-        <span class="conf-val" id="conf-val">3</span>
-      </div>
-      <input type="range" id="conf-slider" min="1" max="5" step="1" value="3" class="conf-slider">
-      <div class="conf-range-labels">
-        <span>1 Very easy</span><span>2</span><span>3</span><span>4</span><span>5 Very hard</span>
-      </div>
-    </div>
     <div class="nav">
       <button id="btn-prev">&laquo; Previous</button>
-      <span class="status" id="status"></span>
+      <div class="nav-center">
+        <span class="nav-info" id="nav-info"></span>
+        <span class="status" id="status"></span>
+      </div>
       <button id="btn-next">Next &raquo;</button>
     </div>
+    <div class="nav-warning" id="nav-warning"></div>
   </div>
 
   <!-- RIGHT: Response & feedback -->
   <div class="right-panel">
     <div class="task-sec">
-      <div class="tabs" id="tabs"></div>
+      <div class="vlm-badge" id="vlm-badge"></div>
       <div class="tc">
         <div class="crop-hint">Use Crop &#x2702; to select a region as evidence for any part of your feedback</div>
         <div class="field" id="diag-section">
@@ -71,6 +66,7 @@ __CSS__
           <div class="field-label">AI Description</div>
           <div class="desc-list" id="desc-list"></div>
         </div>
+        <div class="field-label"><span style="font-weight:400;text-transform:none;letter-spacing:0;color:#9ca3af">(optional)</span></div>
         <div class="survey" id="survey"></div>
       </div>
     </div>

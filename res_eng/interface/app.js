@@ -6,8 +6,8 @@
 
 /* ===== State ===== */
 const S = {
-  vlm:  Object.keys(VLM_DATA)[0],
-  idx:  0,
+  page: 0,
+  vlm:  null,
   R:    JSON.parse(localStorage.getItem(SK) || '{}'),
   zoom: 1, panX: 0, panY: 0,
   baseW: 0, baseH: 0,
@@ -24,16 +24,24 @@ const cropOverlay = document.getElementById('crop-overlay');
 const cropSel     = document.getElementById('crop-sel');
 const zoomLbl     = document.getElementById('zoom-lbl');
 
-/* ===== VLM tabs ===== */
+/* ===== Flat page sequence (image-first, then VLM) ===== */
 const VLM_NAMES = Object.keys(VLM_DATA);
-const tabsEl = document.getElementById('tabs');
-VLM_NAMES.forEach(n => {
-  const b = document.createElement('button');
-  b.className = 'tab'; b.dataset.vlm = n;
-  b.innerHTML = n + '<span class="dot"></span>';
-  b.onclick = () => { collect(); S.vlm = n; render(); };
-  tabsEl.appendChild(b);
+const IMAGE_IDS = [];
+const _seen = new Set();
+VLM_NAMES.forEach(vlm => {
+  VLM_DATA[vlm].forEach(r => { if (!_seen.has(r.id)) { _seen.add(r.id); IMAGE_IDS.push(r.id); } });
 });
+const _vlmById = {};
+VLM_NAMES.forEach(vlm => { _vlmById[vlm] = {}; VLM_DATA[vlm].forEach(r => { _vlmById[vlm][r.id] = r; }); });
+const PAGES = [];
+IMAGE_IDS.forEach((id, imgIdx) => {
+  VLM_NAMES.forEach(vlm => {
+    const rec = _vlmById[vlm][id];
+    if (rec) PAGES.push({ id, vlm, record: rec, imgIdx });
+  });
+});
+function syncPage() { S.vlm = PAGES[S.page].vlm; }
+syncPage();
 
 /* ===== Question inputs ===== */
 const surveyEl = document.getElementById('survey');
@@ -64,7 +72,7 @@ function cleanText(text) {
 }
 
 /* ===== Data helpers ===== */
-function row() { return VLM_DATA[S.vlm][S.idx]; }
+function row() { return PAGES[S.page].record; }
 function rkey(i) { return TASK_KEY + '_q' + (i + 1); }
 function getR(i) { return S.R[S.vlm]?.[row().id]?.[rkey(i)] || ''; }
 function setR(i, v) {
@@ -152,7 +160,7 @@ function renderItemList(containerId, sectionId, items, prefix, numbered, rerende
     btnMaybe.dataset.tip = 'Maybe';
     btnMaybe.onclick = () => {
       setItemR(key, status === 'maybe' ? '' : 'maybe');
-      clearCorrection();
+      if (status === 'maybe') clearCorrection();
       persist(); rerender(); showSaved();
     };
 
@@ -172,13 +180,13 @@ function renderItemList(containerId, sectionId, items, prefix, numbered, rerende
     rowDiv.appendChild(actions);
     listEl.appendChild(rowDiv);
 
-    if (status === 'incorrect') {
+    if (status === 'incorrect' || status === 'maybe') {
       const corrDiv = document.createElement('div');
-      corrDiv.className = 'rev-correction';
+      corrDiv.className = 'rev-correction' + (status === 'maybe' ? ' rev-correction-maybe' : '');
 
       const inp = document.createElement('input');
       inp.type = 'text';
-      inp.placeholder = 'What should it say instead?';
+      inp.placeholder = status === 'maybe' ? 'Why? (optional)' : 'What should it say instead?';
       inp.value = correction;
       const cropKey = key + '_crops';
       inp.dataset.cropKey = cropKey;
@@ -211,19 +219,18 @@ function fmtId(id) {
   const m = id.match(/^(\d+)_combined$/);
   return m ? 'Lesion ' + m[1] : id;
 }
-function vlmStatus(vlm) {
-  const rec = VLM_DATA[vlm][S.idx];
-  const r = S.R[vlm]?.[rec.id];
-  if (!r) return 'none';
-  const diagItems = rec.diagnosis_list || [];
-  const descItems = rec.sentence_list || [];
+function isPageComplete(pageIdx) {
+  const pg = PAGES[pageIdx];
+  const r = S.R[pg.vlm]?.[pg.id];
+  if (!r) return false;
+  const diagItems = pg.record.diagnosis_list || [];
+  const descItems = pg.record.sentence_list || [];
   const totalItems = diagItems.length + descItems.length;
+  if (totalItems === 0) return true;
   let reviewed = 0;
   diagItems.forEach((_, i) => { if (r['diag_' + i]) reviewed++; });
   descItems.forEach((_, i) => { if (r['desc_' + i]) reviewed++; });
-  if (reviewed === 0) return 'none';
-  if (reviewed >= totalItems) return 'complete';
-  return 'partial';
+  return reviewed >= totalItems;
 }
 
 /* ===== Image fit / transform ===== */
@@ -575,25 +582,6 @@ document.addEventListener('keydown', e => {
 });
 
 
-/* ===== Confidence slider ===== */
-const confSlider = document.getElementById('conf-slider');
-const confVal = document.getElementById('conf-val');
-
-function getConf() { return S.R[S.vlm]?.[row().id]?.confidence ?? ''; }
-function setConf(v) {
-  if (!S.R[S.vlm]) S.R[S.vlm] = {};
-  if (!S.R[S.vlm][row().id]) S.R[S.vlm][row().id] = {};
-  S.R[S.vlm][row().id].confidence = v;
-}
-
-confSlider.addEventListener('input', () => {
-  const v = confSlider.value;
-  confVal.textContent = v;
-  setConf(v);
-  persist();
-  showSaved('\u2713 Auto-saved');
-});
-
 /* ===== Status ===== */
 let saveTimer;
 function showSaved(msg) {
@@ -604,26 +592,36 @@ function showSaved(msg) {
   saveTimer = setTimeout(() => el.classList.remove('show'), 1500);
 }
 
+/* ===== Navigation warning ===== */
+let _warnEl;
+function showNavWarning() {
+  if (!_warnEl) _warnEl = document.getElementById('nav-warning');
+  _warnEl.innerHTML = '&#x26A0;&#xFE0F; Please review all items before continuing.';
+  _warnEl.classList.remove('show');
+  void _warnEl.offsetWidth;
+  _warnEl.classList.add('show');
+}
+function hideNavWarning() {
+  if (!_warnEl) _warnEl = document.getElementById('nav-warning');
+  _warnEl.classList.remove('show');
+}
+
 /* ===== Render ===== */
 function render() {
-  const r = row(), data = VLM_DATA[S.vlm];
+  syncPage();
+  hideNavWarning();
+  const r = row(), pg = PAGES[S.page];
   imgEl.onload = fitImage;
   imgEl.src = IMAGES[r.id];
   resetView();
-  document.getElementById('img-id').textContent = 'Lesion ' + (S.idx + 1) + ' of ' + data.length;
-  document.getElementById('btn-prev').disabled = S.idx === 0;
-  document.getElementById('btn-next').disabled = S.idx === data.length - 1;
-  document.querySelectorAll('.tab').forEach(t => {
-    const v = t.dataset.vlm;
-    t.classList.toggle('active', v === S.vlm);
-    const dot = t.querySelector('.dot');
-    const st = vlmStatus(v);
-    dot.classList.toggle('done', st === 'complete');
-    dot.classList.toggle('partial', st === 'partial');
-  });
-  const savedConf = getConf();
-  if (savedConf !== '') { confSlider.value = savedConf; confVal.textContent = savedConf; }
-  else { confSlider.value = 3; confVal.textContent = '3'; }
+  document.getElementById('img-id').textContent = 'Lesion ' + (pg.imgIdx + 1) + ' of ' + IMAGE_IDS.length;
+  document.getElementById('btn-prev').disabled = S.page === 0;
+  document.getElementById('btn-next').disabled = S.page === PAGES.length - 1;
+  document.getElementById('vlm-badge').innerHTML = '<span class="vlm-tag">Model</span>' + pg.vlm;
+  document.getElementById('nav-info').textContent = 'Page ' + (S.page + 1) + ' / ' + PAGES.length;
+  let done = 0;
+  PAGES.forEach((_, i) => { if (isPageComplete(i)) done++; });
+  document.getElementById('progress').textContent = done + ' / ' + PAGES.length + ' reviewed';
 
   renderDiagnoses();
   renderDescription();
@@ -635,8 +633,12 @@ function render() {
 }
 
 /* ===== Navigation ===== */
-document.getElementById('btn-prev').onclick = () => { collect(); persist(); if (S.idx > 0) { S.idx--; render(); } };
-document.getElementById('btn-next').onclick = () => { collect(); persist(); if (S.idx < VLM_DATA[S.vlm].length - 1) { S.idx++; render(); } };
+document.getElementById('btn-prev').onclick = () => { collect(); persist(); if (S.page > 0) { S.page--; render(); } };
+document.getElementById('btn-next').onclick = () => {
+  collect(); persist();
+  if (!isPageComplete(S.page)) { showNavWarning(); return; }
+  if (S.page < PAGES.length - 1) { S.page++; render(); }
+};
 
 /* ===== Auto-save ===== */
 document.getElementById('survey').addEventListener('input', () => {
@@ -678,7 +680,7 @@ function buildFeedbackList(record, list, prefix) {
 document.getElementById('btn-exp').onclick = () => {
   collect(); persist();
   const headers = ['id', 'model', 'raw_response', 'diagnosis_feedback',
-                    'description_feedback', 'other_feedback', 'difficulty'];
+                    'description_feedback', 'other_feedback'];
   const rows = [headers.map(h => csvCell(h)).join(',')];
 
   const vlms = Object.keys(VLM_DATA);
@@ -703,13 +705,12 @@ document.getElementById('btn-exp').onclick = () => {
         if (txt) otherParts.push(inlineCrops(txt, a['q' + qi + '_crops'] || []));
       });
       const otherFb = otherParts.join(' ');
-      const conf = a.confidence ?? 3;
       const rawResp = flat(r[TASK_KEY] || '');
       rows.push([
         csvCell(id), csvCell(vlm), csvCell(rawResp),
         csvCell(diagList.length ? JSON.stringify(diagList) : ''),
         csvCell(descList.length ? JSON.stringify(descList) : ''),
-        csvCell(otherFb), csvCell(conf)
+        csvCell(otherFb)
       ].join(','));
     });
   });

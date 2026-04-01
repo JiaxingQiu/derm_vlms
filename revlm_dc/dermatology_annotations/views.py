@@ -1,39 +1,245 @@
 import json
 from pathlib import Path
-from django.conf import settings
-from django.shortcuts import render, redirect, get_object_or_404
-from .models import Dermatologist, Annotation
 
-### helpers
+from django.conf import settings
+from django.http import JsonResponse
+from django.shortcuts import get_object_or_404, redirect, render
+
+from .models import Annotation, Dermatologist
+
+
 def load_users_data():
     json_path = Path(settings.BASE_DIR) / "data" / "users.json"
     with open(json_path, "r", encoding="utf-8") as f:
         return json.load(f)["users"]
+
 
 def load_annotations_data():
     json_path = Path(settings.BASE_DIR) / "data" / "annotations_data.json"
     with open(json_path, "r", encoding="utf-8") as f:
         return json.load(f)
 
-### views
 
-# def dermatology_annotations(request):
-#     dermatologists = Dermatologist.objects.all()
-#     return render(request, "annotations.html", {"dermatologists": dermatologists})
+def get_case_model_data(case_data):
+    return {
+        key: value
+        for key, value in case_data.items()
+        if key != "image_path" and isinstance(value, dict)
+    }
+
+
+def is_json_request(request):
+    return "application/json" in (request.content_type or "")
+
+
+def parse_request_payload(request):
+    if is_json_request(request):
+        try:
+            return json.loads(request.body.decode("utf-8") or "{}")
+        except json.JSONDecodeError:
+            return {}
+
+    review_data = request.POST.get("review_data")
+    if review_data:
+        try:
+            payload = json.loads(review_data)
+        except json.JSONDecodeError:
+            payload = {}
+    else:
+        payload = {}
+
+    if request.POST.get("action"):
+        payload["action"] = request.POST.get("action")
+
+    if "difficulty" not in payload and request.POST.get("difficulty"):
+        payload["difficulty"] = request.POST.get("difficulty")
+
+    if "other_feedback" not in payload and request.POST.get("textual_feedback"):
+        payload["other_feedback"] = request.POST.get("textual_feedback", "").strip()
+
+    if "visual_feedback" not in payload and request.POST.get("visual_feedback"):
+        payload["visual_feedback"] = request.POST.get("visual_feedback", "").strip()
+
+    if "model_response_correct" not in payload and "model_response_correct" in request.POST:
+        payload["model_response_correct"] = request.POST.get("model_response_correct") == "on"
+
+    return payload
+
+
+def normalize_item_feedback(items):
+    normalized = []
+    for item in items or []:
+        if not isinstance(item, dict):
+            continue
+        label = item.get("label") or item.get("status") or ""
+        label = {
+            "yes": "correct",
+            "no": "incorrect",
+            "correct": "correct",
+            "incorrect": "incorrect",
+            "maybe": "maybe",
+        }.get(label, "")
+        normalized.append(
+            {
+                "text": item.get("text", ""),
+                "label": label,
+                "feedback": item.get("feedback", ""),
+                "crops": item.get("crops", []),
+            }
+        )
+    return normalized
+
+
+def normalize_model_review(model_review, existing_model_review=None):
+    existing_model_review = existing_model_review or {}
+
+    difficulty = model_review.get("difficulty", existing_model_review.get("difficulty"))
+    if difficulty in ("", None):
+        difficulty = None
+    elif isinstance(difficulty, str) and difficulty.isdigit():
+        difficulty = int(difficulty)
+
+    raw_state = model_review.get("raw_state", existing_model_review.get("raw_state", {}))
+
+    normalized = {
+        "diagnosis_feedback": normalize_item_feedback(
+            model_review.get("diagnosis_feedback", existing_model_review.get("diagnosis_feedback", []))
+        ),
+        "description_feedback": normalize_item_feedback(
+            model_review.get("description_feedback", existing_model_review.get("description_feedback", []))
+        ),
+        "other_feedback": model_review.get(
+            "other_feedback",
+            existing_model_review.get("other_feedback", ""),
+        ),
+        "other_feedback_crops": model_review.get(
+            "other_feedback_crops",
+            existing_model_review.get("other_feedback_crops", []),
+        ),
+        "difficulty": difficulty,
+        "raw_state": raw_state if isinstance(raw_state, dict) else {},
+    }
+
+    if "visual_feedback" in model_review:
+        normalized["visual_feedback"] = model_review.get("visual_feedback", "")
+    elif existing_model_review.get("visual_feedback"):
+        normalized["visual_feedback"] = existing_model_review["visual_feedback"]
+
+    return normalized
+
+
+def summarize_text_feedback(review):
+    parts = []
+
+    for item in review.get("diagnosis_feedback", []):
+        if item.get("label") == "incorrect" and item.get("feedback"):
+            parts.append(f"Diagnosis correction: {item['feedback']}")
+
+    for item in review.get("description_feedback", []):
+        if item.get("label") == "incorrect" and item.get("feedback"):
+            parts.append(f"Description correction: {item['feedback']}")
+
+    other_feedback = review.get("other_feedback", "").strip()
+    if other_feedback:
+        parts.append(other_feedback)
+
+    return "\n".join(parts) if parts else ""
+
+
+def summarize_visual_feedback(review):
+    visual_payload = {}
+
+    for key in ("other_feedback_crops", "visual_feedback"):
+        value = review.get(key)
+        if value:
+            visual_payload[key] = value
+
+    diag_crops = [
+        item["crops"]
+        for item in review.get("diagnosis_feedback", [])
+        if item.get("crops")
+    ]
+    desc_crops = [
+        item["crops"]
+        for item in review.get("description_feedback", [])
+        if item.get("crops")
+    ]
+
+    if diag_crops:
+        visual_payload["diagnosis_crops"] = diag_crops
+    if desc_crops:
+        visual_payload["description_crops"] = desc_crops
+
+    return json.dumps(visual_payload) if visual_payload else ""
+
+
+def review_is_fully_correct(review):
+    labels = [
+        item.get("label")
+        for group in ("diagnosis_feedback", "description_feedback")
+        for item in review.get(group, [])
+        if item.get("label")
+    ]
+    return bool(labels) and all(label == "correct" for label in labels)
+
+
+def build_frontend_review(payload, existing_review=None):
+    existing_review = existing_review or {}
+    existing_models_review = dict(existing_review.get("models", {}))
+
+    if isinstance(payload.get("models"), dict):
+        models_review = {}
+        for model_name, model_review in payload["models"].items():
+            if not isinstance(model_review, dict):
+                continue
+            models_review[model_name] = normalize_model_review(
+                model_review,
+                existing_models_review.get(model_name, {}),
+            )
+
+        return {
+            "active_model": payload.get("active_model") or existing_review.get("active_model"),
+            "models": models_review,
+        }
+
+    model_name = payload.get("model_name") or payload.get("vlm") or payload.get("model") or "default"
+    models_review = dict(existing_models_review)
+    models_review[model_name] = normalize_model_review(
+        payload,
+        existing_models_review.get(model_name, {}),
+    )
+    return {"active_model": model_name, "models": models_review}
+
+
+def update_annotation_from_frontend(annotation, payload):
+    review_data = build_frontend_review(payload, annotation.review_data)
+    active_model = review_data["active_model"]
+    active_review = review_data["models"][active_model]
+
+    annotation.review_data = review_data
+    annotation.difficulty = active_review.get("difficulty")
+    annotation.model_response_correct = review_is_fully_correct(active_review)
+    annotation.textual_feedback = summarize_text_feedback(active_review)
+    annotation.visual_feedback = summarize_visual_feedback(active_review)
+
+
+def apply_legacy_form_payload(annotation, request):
+    annotation.model_response_correct = request.POST.get("model_response_correct") == "on"
+    annotation.textual_feedback = request.POST.get("textual_feedback", "").strip()
+    annotation.visual_feedback = request.POST.get("visual_feedback", "").strip()
+
 
 def login_view(request):
     error_message = None
 
     if request.method == "POST":
         login_id = request.POST.get("login_id", "").strip()
-        data = load_users_data() # NOTE: if too slow, use separate json
+        data = load_users_data()
 
         if login_id not in data:
             error_message = "invalid login id"
         else:
-            dermatologist, created = Dermatologist.objects.get_or_create(
-                login_id=login_id
-            )
+            Dermatologist.objects.get_or_create(login_id=login_id)
             request.session["login_id"] = login_id
             return redirect("annotations")
 
@@ -41,20 +247,25 @@ def login_view(request):
 
 
 def annotations_view(request):
-    # validate login
     login_id = request.session.get("login_id")
     if not login_id:
         return redirect("login")
 
-    # load cases data
-    data = load_annotations_data()
+    users_data = load_users_data()
+    annotations_data = load_annotations_data()
     dermatologist = get_object_or_404(Dermatologist, login_id=login_id)
+    case_ids = users_data.get(login_id, [])
 
-    # get current case
-    user_cases_dict = data[login_id]
-    case_ids = list(user_cases_dict.keys())
+    if not case_ids:
+        return render(
+            request,
+            "annotations.html",
+            {
+                "login_id": login_id,
+                "no_cases": True,
+            },
+        )
 
-    # TODO: send to thank you page if all cases annotated
     if dermatologist.current_case_index >= len(case_ids):
         if request.method == "POST":
             action = request.POST.get("action")
@@ -69,65 +280,68 @@ def annotations_view(request):
                 dermatologist.save()
                 return redirect("annotations")
 
-        return render(request, "annotations.html", {
-            "login_id": login_id,
-            "show_done_confirmation": True,
-        })
+        return render(
+            request,
+            "annotations.html",
+            {
+                "login_id": login_id,
+                "show_done_confirmation": True,
+            },
+        )
 
     if dermatologist.is_done:
         return redirect("thank_you")
 
     current_index = dermatologist.current_case_index
     current_case_id = case_ids[current_index]
-    current_case_data = user_cases_dict[current_case_id]
+    current_case_data = annotations_data[current_case_id]
+    case_models = get_case_model_data(current_case_data)
 
-    annotation, created = Annotation.objects.get_or_create(
+    annotation, _ = Annotation.objects.get_or_create(
         dermatologist=dermatologist,
-        case_id=current_case_id
+        case_id=current_case_id,
     )
 
-    # if request.method == "POST":
-    #     action = request.POST.get("action")
-
-    #     annotation.model_response_correct = request.POST.get("model_response_correct") == "on"
-    #     annotation.textual_feedback = request.POST.get("textual_feedback", "").strip()
-    #     annotation.visual_feedback = request.POST.get("visual_feedback", "").strip()
-    #     annotation.save()
-
-    #     if action == "next" and current_index < len(case_ids) - 1:
-    #         dermatologist.current_case_index = current_index + 1
-    #         dermatologist.save()
-    #         return redirect("annotations")
-
-    #     if action == "previous" and current_index > 0:
-    #         dermatologist.current_case_index = current_index - 1
-    #         dermatologist.save()
-    #         return redirect("annotations")
-
-    #     return redirect("annotations")
-
     if request.method == "POST":
-        action = request.POST.get("action")
+        payload = parse_request_payload(request)
+        action = payload.get("action", "save")
 
-        annotation.model_response_correct = request.POST.get("model_response_correct") == "on"
-        annotation.textual_feedback = request.POST.get("textual_feedback", "").strip()
-        annotation.visual_feedback = request.POST.get("visual_feedback", "").strip()
+        if (
+            is_json_request(request)
+            or isinstance(payload.get("models"), dict)
+            or payload.get("active_model")
+            or payload.get("model_name")
+            or payload.get("diagnosis_feedback")
+            or payload.get("description_feedback")
+            or payload.get("other_feedback") is not None
+        ):
+            update_annotation_from_frontend(annotation, payload)
+        else:
+            apply_legacy_form_payload(annotation, request)
+
         annotation.save()
 
         if action == "previous" and current_index > 0:
             dermatologist.current_case_index = current_index - 1
             dermatologist.save()
-            return redirect("annotations")
-
-        if action == "next" and current_index < len(case_ids) - 1:
+        elif action == "next" and current_index < len(case_ids) - 1:
             dermatologist.current_case_index = current_index + 1
             dermatologist.save()
-            return redirect("annotations")
-
-        if action == "finish":
+        elif action == "finish":
             dermatologist.current_case_index = len(case_ids)
             dermatologist.save()
-            return redirect("annotations")
+
+        if is_json_request(request):
+            return JsonResponse(
+                {
+                    "ok": True,
+                    "action": action,
+                    "case_id": current_case_id,
+                    "current_index": dermatologist.current_case_index,
+                    "annotation_id": annotation.id,
+                    "saved_review_data": annotation.review_data,
+                }
+            )
 
         return redirect("annotations")
 
@@ -135,11 +349,13 @@ def annotations_view(request):
         "login_id": login_id,
         "case_id": current_case_id,
         "case_data": current_case_data,
+        "case_models": case_models,
         "annotation": annotation,
         "current_index": current_index,
         "total_cases": len(case_ids),
         "has_previous": current_index > 0,
         "has_next": current_index < len(case_ids) - 1,
+        "annotation_review_data_json": json.dumps(annotation.review_data),
     }
 
     return render(request, "annotations.html", context)
@@ -156,4 +372,3 @@ def thank_you_view(request):
 def logout_view(request):
     request.session.flush()
     return redirect("login")
-

@@ -6,7 +6,6 @@ from django.conf import settings
 from django.contrib import admin
 from django.http import HttpResponse
 from django.urls import path
-from django.template.response import TemplateResponse
 
 from .models import Dermatologist, Annotation
 
@@ -17,14 +16,22 @@ def load_annotations_data():
         return json.load(f)
 
 
+def load_users_data():
+    json_path = Path(settings.BASE_DIR) / "data" / "users.json"
+    with open(json_path, "r", encoding="utf-8") as f:
+        return json.load(f)["users"]
+
+
 class AnnotationInline(admin.TabularInline):
     model = Annotation
     extra = 0
     fields = (
         "case_id",
         "model_response_correct",
+        "difficulty",
         "textual_feedback",
         "visual_feedback",
+        "review_data",
         "created_at",
         "updated_at",
     )
@@ -38,6 +45,7 @@ class AnnotationAdmin(admin.ModelAdmin):
         "dermatologist",
         "case_id",
         "model_response_correct",
+        "difficulty",
         "short_textual_feedback",
         "updated_at",
     )
@@ -77,8 +85,8 @@ class DermatologistAdmin(admin.ModelAdmin):
         return custom_urls + urls
 
     def get_user_case_count(self, obj):
-        data = load_annotations_data()
-        return len(data.get(obj.login_id, {}))
+        data = load_users_data()
+        return len(data.get(obj.login_id, []))
 
     def completed_cases_count(self, obj):
         return obj.annotations.count()
@@ -107,8 +115,10 @@ class DermatologistAdmin(admin.ModelAdmin):
             "current_case_index",
             "case_id",
             "model_response_correct",
+            "difficulty",
             "textual_feedback",
             "visual_feedback",
+            "review_data",
             "created_at",
             "updated_at",
         ])
@@ -127,8 +137,10 @@ class DermatologistAdmin(admin.ModelAdmin):
                 annotation.dermatologist.current_case_index,
                 annotation.case_id,
                 annotation.model_response_correct,
+                annotation.difficulty,
                 annotation.textual_feedback or "",
                 annotation.visual_feedback or "",
+                json.dumps(annotation.review_data, ensure_ascii=False),
                 annotation.created_at,
                 annotation.updated_at,
             ])

@@ -3,73 +3,1488 @@
 {% block title %}Annotations{% endblock %}
 
 {% block content %}
-<h1>Annotations</h1>
-<p>Logged in as: {{ login_id }}</p>
-
 {% if show_done_confirmation %}
-    <h2>You have reached the end of all cases</h2>
-    <p>Are you done with your annotations?</p>
-
-    <form method="post">
+<div class="anno-shell done-shell">
+    <h1>All Cases Reviewed</h1>
+    <p>You have reached the end of the assigned cases.</p>
+    <form method="post" class="done-form">
         {% csrf_token %}
-        <button type="submit" name="action" value="done_yes">Yes</button>
-        <button type="submit" name="action" value="done_no">No</button>
+        <button type="submit" name="action" value="done_yes" class="btn btn-primary">Finish</button>
+        <button type="submit" name="action" value="done_no" class="btn btn-outline-secondary">Go Back</button>
     </form>
-
+</div>
 {% elif no_cases %}
-<p>No cases assigned.</p>
-
+<div class="anno-shell done-shell">
+    <h1>No Cases</h1>
+    <p>No cases assigned.</p>
+</div>
 {% else %}
-    <p>Case {{ current_index|add:1 }} of {{ total_cases }}</p>
-    <p><strong>Case id:</strong> {{ case_id }}</p>
+{{ case_data|json_script:"case-data" }}
+{{ annotation.review_data|json_script:"saved-review-data" }}
 
-    <div>
-        <img src="/media/{{ case_data.image_path }}" alt="{{ case_id }}" style="max-width: 500px;">
-    </div>
+<div class="anno-shell">
+    <header class="anno-header">
+        <div>
+            <p class="eyebrow">Dermatology Annotation</p>
+            <h1>Case {{ current_index|add:1 }} of {{ total_cases }}</h1>
+            <p class="meta-line">Reviewer: {{ login_id }} | Case ID: {{ case_id }}</p>
+        </div>
+        <a href="{% url 'logout' %}" class="logout-link">Logout</a>
+    </header>
 
-    <h3>Model A</h3>
-    <p>{{ case_data.model_a }}</p>
-
-    <h3>Model B</h3>
-    <p>{{ case_data.model_b }}</p>
-
-    <form method="post">
+    <form method="post" id="annotation-form">
         {% csrf_token %}
+        <input type="hidden" name="action" id="form-action" value="save">
+        <input type="hidden" name="review_data" id="review-data-input">
 
-        <div>
-            <label>
-                <input type="checkbox" name="model_response_correct" {% if annotation.model_response_correct %}checked{% endif %}>
-                Model response correct
-            </label>
+        <div class="anno-grid">
+            <section class="image-panel">
+                <div class="panel-card image-card">
+                    <div class="zoom-bar">
+                        <button type="button" id="btn-zin" title="Zoom in">+</button>
+                        <span class="zlabel" id="zoom-lbl">100%</span>
+                        <button type="button" id="btn-zout" title="Zoom out">&minus;</button>
+                        <button type="button" id="btn-zreset" title="Reset zoom">&#x21BA;</button>
+                        <span class="spacer"></span>
+                        <button type="button" id="btn-crop" class="btn-crop-green">&#x2702; Crop</button>
+                    </div>
+                    <div class="img-container" id="img-container">
+                        <img id="img" alt="{{ case_id }}">
+                        <div class="crop-overlay" id="crop-overlay">
+                            <div class="crop-sel" id="crop-sel"></div>
+                        </div>
+                    </div>
+                    <div class="img-id" id="img-id">{{ case_id }}</div>
+                </div>
+
+                <div class="panel-card">
+                    <div class="difficulty-block">
+                        <label for="difficulty-input" class="section-title">Difficulty</label>
+                        <div class="difficulty-row">
+                            <input type="range" id="difficulty-input" min="1" max="5" step="1">
+                            <span id="difficulty-value">3</span>
+                        </div>
+                        <div class="difficulty-labels">
+                            <span>1 Very easy</span>
+                            <span>5 Very hard</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="review-panel">
+                <div class="panel-card">
+                    <div class="tabs" id="model-tabs"></div>
+                    <div class="crop-hint">Use Crop &#x2702; to select a region as evidence for any part of your feedback.</div>
+
+                    <div class="response-block">
+                        <div class="section-header">
+                            <h2>Model Summary</h2>
+                            <span class="status-pill" id="tab-status-label"></span>
+                        </div>
+                        <div class="summary-grid">
+                            <div class="summary-box">
+                                <span class="summary-label">Diagnoses</span>
+                                <span class="summary-value" id="diagnosis-count"></span>
+                            </div>
+                            <div class="summary-box">
+                                <span class="summary-label">Descriptions</span>
+                                <span class="summary-value" id="description-count"></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="response-block">
+                        <div class="section-header">
+                            <h2>Diagnosis Review</h2>
+                            <p class="section-copy">Mark each diagnosis as correct, incorrect, or maybe.</p>
+                        </div>
+                        <div id="diagnosis-list" class="review-list"></div>
+                    </div>
+
+                    <div class="response-block">
+                        <div class="section-header">
+                            <h2>Description Review</h2>
+                            <p class="section-copy">Mark each description statement as correct, incorrect, or maybe.</p>
+                        </div>
+                        <div id="description-list" class="review-list"></div>
+                    </div>
+
+                    <div class="response-block">
+                        <div class="section-header">
+                            <h2>Additional Feedback</h2>
+                            <p class="section-copy">Use this for anything not captured above.</p>
+                        </div>
+                        <textarea id="other-feedback" rows="5" class="feedback-box" placeholder="Add any additional feedback here."></textarea>
+                        <div id="other-feedback-ev" class="field-evidence"></div>
+                    </div>
+                </div>
+            </section>
         </div>
 
-        <div>
-            <label for="textual_feedback">Textual feedback</label><br>
-            <textarea name="textual_feedback" id="textual_feedback" rows="6"
-                cols="80">{{ annotation.textual_feedback|default_if_none:"" }}</textarea>
-        </div>
-
-        <div>
-            <label for="visual_feedback">Visual feedback</label><br>
-            <textarea name="visual_feedback" id="visual_feedback" rows="6"
-                cols="80">{{ annotation.visual_feedback|default_if_none:"" }}</textarea>
-        </div>
-
-        <div style="margin-top: 20px;">
+        <div class="nav-row">
             {% if has_previous %}
-            <button type="submit" name="action" value="previous">Previous</button>
-            {% endif %}
-
-            <button type="submit" name="action" value="save">Save</button>
-
-            {% if has_next %}
-            <button type="submit" name="action" value="next">Next</button>
+            <button type="button" class="btn btn-outline-secondary nav-btn" data-action="previous">Previous</button>
             {% else %}
-            <button type="submit" name="action" value="finish">Finish</button>
+            <span></span>
             {% endif %}
+
+            <div class="center-actions">
+                <button type="button" class="btn btn-light nav-btn" data-action="save">Save</button>
+                {% if has_next %}
+                <button type="button" class="btn btn-primary nav-btn" data-action="next">Next</button>
+                {% else %}
+                <button type="button" class="btn btn-primary nav-btn" data-action="finish">Finish</button>
+                {% endif %}
+            </div>
         </div>
     </form>
-{% endif %}
+</div>
 
-<p><a href="{% url 'logout' %}">Logout</a></p>
+<style>
+.container {
+    max-width: 1440px;
+    padding-top: 24px;
+    padding-bottom: 32px;
+}
+
+.anno-shell {
+    color: #172033;
+}
+
+.done-shell {
+    max-width: 720px;
+    margin: 48px auto;
+}
+
+.done-form {
+    display: flex;
+    gap: 12px;
+    margin-top: 20px;
+}
+
+.anno-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 24px;
+    align-items: flex-start;
+    margin-bottom: 24px;
+}
+
+.eyebrow {
+    margin: 0 0 6px;
+    font-size: 0.78rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #a24621;
+    font-weight: 700;
+}
+
+.anno-header h1 {
+    margin: 0;
+    font-size: 2rem;
+    line-height: 1.1;
+}
+
+.meta-line {
+    margin: 8px 0 0;
+    color: #5b6474;
+}
+
+.logout-link {
+    color: #335c67;
+    font-weight: 600;
+}
+
+.anno-grid {
+    display: grid;
+    grid-template-columns: minmax(320px, 42%) minmax(420px, 1fr);
+    gap: 20px;
+    align-items: start;
+}
+
+.panel-card {
+    background: #fff;
+    border: 1px solid #d9dfeb;
+    border-radius: 18px;
+    box-shadow: 0 14px 30px rgba(32, 46, 74, 0.08);
+    padding: 18px;
+}
+
+.image-panel {
+    display: grid;
+    gap: 20px;
+    position: sticky;
+    top: 16px;
+}
+
+.image-card {
+    padding: 0;
+    overflow: hidden;
+}
+
+.zoom-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 12px;
+    border-bottom: 1px solid #e5e7eb;
+    background: #f9fafb;
+}
+
+.zoom-bar button {
+    width: 30px;
+    height: 30px;
+    border: 1px solid #d1d5db;
+    background: #fff;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #374151;
+    transition: all .15s;
+}
+
+.zoom-bar button:hover {
+    background: #f3f4f6;
+    border-color: #9ca3af;
+}
+
+.zoom-bar button.active {
+    background: #2563eb;
+    color: #fff;
+    border-color: #2563eb;
+}
+
+.btn-crop-green {
+    background: #eef2ff !important;
+    color: #4338ca !important;
+    border-color: #c7d2fe !important;
+    font-size: .88rem;
+    font-weight: 500;
+    width: auto !important;
+    padding: 4px 14px !important;
+    height: auto !important;
+}
+
+.btn-crop-green:hover {
+    background: #e0e7ff !important;
+    border-color: #a5b4fc !important;
+}
+
+.btn-crop-green.active {
+    background: #4338ca !important;
+    color: #fff !important;
+    border-color: #4338ca !important;
+}
+
+.zoom-bar .zlabel {
+    font-size: .8rem;
+    color: #6b7280;
+    min-width: 42px;
+    text-align: center;
+}
+
+.zoom-bar .spacer {
+    flex: 1;
+}
+
+.img-container {
+    position: relative;
+    overflow: hidden;
+    cursor: grab;
+    background: #e5e7eb;
+    max-height: 85vh;
+    min-height: 340px;
+}
+
+.img-container.crop-active {
+    cursor: crosshair;
+}
+
+.img-container.panning {
+    cursor: grabbing;
+}
+
+.img-container img {
+    position: absolute;
+    top: 0;
+    left: 0;
+    transform-origin: 0 0;
+    user-select: none;
+    -webkit-user-drag: none;
+}
+
+.crop-overlay {
+    position: absolute;
+    inset: 0;
+    display: none;
+    z-index: 10;
+}
+
+.crop-sel {
+    position: absolute;
+    border: 2px solid #2563eb;
+    background: rgba(37, 99, 235, .12);
+    pointer-events: none;
+}
+
+.img-id {
+    padding: 8px 12px;
+    font-size: .82rem;
+    color: #6b7280;
+    text-align: center;
+    background: #f9fafb;
+    border-top: 1px solid #e5e7eb;
+}
+
+.tabs {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 18px;
+    flex-wrap: wrap;
+}
+
+.model-tab {
+    border: 1px solid #d9dfeb;
+    background: #f7f8fb;
+    border-radius: 999px;
+    padding: 10px 16px;
+    font-weight: 600;
+    color: #41506a;
+}
+
+.model-tab.active {
+    background: #1f4b99;
+    border-color: #1f4b99;
+    color: #fff;
+}
+
+.crop-hint {
+    padding: 4px 0;
+    margin-bottom: 14px;
+    font-size: .88rem;
+    font-weight: 500;
+    color: #4338ca;
+}
+
+.response-block + .response-block {
+    margin-top: 22px;
+    padding-top: 22px;
+    border-top: 1px solid #e4e8f0;
+}
+
+.section-header {
+    margin-bottom: 10px;
+}
+
+.section-header h2 {
+    margin: 0;
+    font-size: 1.15rem;
+}
+
+.section-copy {
+    margin: 6px 0 0;
+    color: #667085;
+    font-size: 0.94rem;
+}
+
+.section-title {
+    display: block;
+    font-size: 0.84rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-weight: 700;
+    color: #5b6474;
+    margin-bottom: 12px;
+}
+
+.status-pill {
+    display: inline-flex;
+    align-items: center;
+    min-height: 28px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: #eef2ff;
+    color: #3d4da6;
+    font-size: 0.82rem;
+    font-weight: 700;
+    margin-top: 8px;
+}
+
+.summary-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(120px, 1fr));
+    gap: 12px;
+}
+
+.summary-box {
+    border: 1px solid #e4e8f0;
+    background: #f7f8fb;
+    border-radius: 12px;
+    padding: 14px;
+}
+
+.summary-label {
+    display: block;
+    font-size: 0.82rem;
+    color: #667085;
+    margin-bottom: 4px;
+}
+
+.summary-value {
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: #263247;
+}
+
+.review-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.review-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    padding: 6px 10px;
+    border: 1px solid #e2e8f0;
+    border-bottom: none;
+    background: #f8fafc;
+    transition: background .15s;
+}
+
+.review-list > :last-child {
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.review-row.rev-correct {
+    background: #f0fdf4;
+}
+
+.review-row.rev-maybe {
+    background: #fffbeb;
+}
+
+.review-row.rev-incorrect {
+    background: #fef2f2;
+}
+
+.rev-num {
+    font-weight: 600;
+    color: #6b7280;
+    min-width: 74px;
+    flex-shrink: 0;
+    font-size: .78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.rev-text {
+    flex: 1;
+    font-size: .9rem;
+    line-height: 1.45;
+    color: #334155;
+}
+
+.rev-actions {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+    padding-top: 1px;
+}
+
+.rev-btn {
+    width: 22px;
+    height: 22px;
+    border-radius: 5px;
+    border: 1px solid #d1d5db;
+    background: #fff;
+    cursor: pointer;
+    font-size: .78rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all .15s;
+}
+
+.rev-ok {
+    color: #059669;
+}
+
+.rev-ok:hover {
+    background: #ecfdf5;
+    border-color: #6ee7b7;
+}
+
+.rev-ok.active {
+    background: #059669;
+    color: #fff;
+    border-color: #059669;
+}
+
+.rev-maybe {
+    color: #d97706;
+}
+
+.rev-maybe:hover {
+    background: #fffbeb;
+    border-color: #fcd34d;
+}
+
+.rev-maybe.active {
+    background: #d97706;
+    color: #fff;
+    border-color: #d97706;
+}
+
+.rev-no {
+    color: #dc2626;
+}
+
+.rev-no:hover {
+    background: #fef2f2;
+    border-color: #fca5a5;
+}
+
+.rev-no.active {
+    background: #dc2626;
+    color: #fff;
+    border-color: #dc2626;
+}
+
+.rev-btn[data-tip] {
+    position: relative;
+}
+
+.rev-btn[data-tip]:hover::after {
+    content: attr(data-tip);
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: #1e293b;
+    color: #fff;
+    font-size: .65rem;
+    padding: 2px 6px;
+    border-radius: 4px;
+    white-space: nowrap;
+    z-index: 20;
+    pointer-events: none;
+}
+
+.rev-correction {
+    padding: 8px 14px 10px 80px;
+    border: 1px solid #e2e8f0;
+    border-top: none;
+    background: #fef2f2;
+}
+
+.rev-correction textarea {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid #fca5a5;
+    border-radius: 6px;
+    font-size: .9rem;
+    font-family: inherit;
+    background: #fff;
+    color: #334155;
+    resize: vertical;
+}
+
+.rev-correction textarea:focus,
+.feedback-box:focus {
+    outline: none;
+    border-color: #2563eb;
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, .15);
+}
+
+.feedback-box {
+    width: 100%;
+    border: 1px solid #cad3e1;
+    border-radius: 12px;
+    padding: 12px 14px;
+    font-size: 0.95rem;
+    resize: vertical;
+}
+
+.difficulty-block {
+    margin-top: 18px;
+}
+
+.difficulty-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+#difficulty-input {
+    flex: 1;
+}
+
+#difficulty-value {
+    min-width: 24px;
+    font-weight: 700;
+    color: #2563eb;
+}
+
+.difficulty-labels {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 6px;
+    font-size: 0.82rem;
+    color: #6b7280;
+}
+
+.field-evidence {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin-top: 8px;
+}
+
+.evidence-item {
+    position: relative;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    overflow: visible;
+    background: #f8fafc;
+    cursor: pointer;
+}
+
+.evidence-item .ev-crop {
+    display: block;
+    overflow: hidden;
+    position: relative;
+    border-radius: 3px 3px 0 0;
+}
+
+.evidence-item .ev-crop img {
+    position: absolute;
+    top: 0;
+    left: 0;
+}
+
+.evidence-item .ev-label {
+    font-size: .6rem;
+    color: #6b7280;
+    text-align: center;
+    padding: 1px 3px;
+    background: #f1f5f9;
+    border-radius: 0 0 3px 3px;
+}
+
+.evidence-item .ev-remove {
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(239, 68, 68, .9);
+    color: #fff;
+    font-size: .6rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+    opacity: 0;
+    transition: opacity .15s;
+    z-index: 12;
+}
+
+.evidence-item:hover .ev-remove {
+    opacity: 1;
+}
+
+.ev-float-preview {
+    display: none;
+    position: fixed;
+    overflow: hidden;
+    border-radius: 6px;
+    border: 2px solid #2563eb;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, .3);
+    z-index: 9999;
+    background: #fff;
+    pointer-events: none;
+}
+
+.ev-float-preview img {
+    position: absolute;
+    top: 0;
+    left: 0;
+}
+
+.nav-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    margin-top: 22px;
+}
+
+.center-actions {
+    display: flex;
+    gap: 12px;
+}
+
+.nav-btn {
+    min-width: 120px;
+}
+
+@media (max-width: 991px) {
+    .anno-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .image-panel {
+        position: static;
+    }
+
+    .img-container {
+        max-height: 60vh;
+    }
+}
+</style>
+
+<script>
+(function () {
+    const caseData = JSON.parse(document.getElementById('case-data').textContent);
+    const savedReviewData = JSON.parse(document.getElementById('saved-review-data').textContent || '{}');
+
+    const modelKeys = Object.keys(caseData).filter(key => key !== 'image_path' && typeof caseData[key] === 'object');
+    const activeModelFromSaved = savedReviewData.active_model;
+
+    const state = {
+        activeModel: modelKeys.includes(activeModelFromSaved) ? activeModelFromSaved : modelKeys[0],
+        models: {},
+        zoom: 1,
+        panX: 0,
+        panY: 0,
+        baseW: 0,
+        baseH: 0,
+        cropMode: false,
+        isPanning: false,
+        panStartX: 0,
+        panStartY: 0,
+        panOrigX: 0,
+        panOrigY: 0
+    };
+
+    const tabsEl = document.getElementById('model-tabs');
+    const diagnosisListEl = document.getElementById('diagnosis-list');
+    const descriptionListEl = document.getElementById('description-list');
+    const otherFeedbackEl = document.getElementById('other-feedback');
+    const difficultyInputEl = document.getElementById('difficulty-input');
+    const difficultyValueEl = document.getElementById('difficulty-value');
+    const reviewDataInputEl = document.getElementById('review-data-input');
+    const actionInputEl = document.getElementById('form-action');
+    const statusLabelEl = document.getElementById('tab-status-label');
+    const diagnosisCountEl = document.getElementById('diagnosis-count');
+    const descriptionCountEl = document.getElementById('description-count');
+    const imgEl = document.getElementById('img');
+    const containerEl = document.getElementById('img-container');
+    const cropOverlay = document.getElementById('crop-overlay');
+    const cropSel = document.getElementById('crop-sel');
+    const zoomLbl = document.getElementById('zoom-lbl');
+    const btnCrop = document.getElementById('btn-crop');
+
+    let cropStart = null;
+    let lastFocusedInput = null;
+
+    function normalizeText(value) {
+        return String(value || '').trim();
+    }
+
+    function makeItemFeedback(items, savedItems) {
+        return (items || []).map((text, index) => {
+            const savedItem = (savedItems || [])[index] || {};
+            return {
+                text: normalizeText(text),
+                label: savedItem.label || '',
+                feedback: savedItem.feedback || '',
+                crops: Array.isArray(savedItem.crops) ? savedItem.crops : []
+            };
+        });
+    }
+
+    function makeModelState(modelKey) {
+        const modelData = caseData[modelKey] || {};
+        const saved = (savedReviewData.models || {})[modelKey] || {};
+        const diagnoses = Array.isArray(modelData.diagnoses) ? modelData.diagnoses : [];
+        const descriptions = Array.isArray(modelData.descriptions) ? modelData.descriptions : [];
+
+        return {
+            diagnoses,
+            descriptions,
+            diagnosis_feedback: makeItemFeedback(diagnoses, saved.diagnosis_feedback),
+            description_feedback: makeItemFeedback(descriptions, saved.description_feedback),
+            other_feedback: saved.other_feedback || '',
+            other_feedback_crops: Array.isArray(saved.other_feedback_crops) ? saved.other_feedback_crops : [],
+            difficulty: saved.difficulty || ''
+        };
+    }
+
+    modelKeys.forEach(modelKey => {
+        state.models[modelKey] = makeModelState(modelKey);
+    });
+
+    function getModelLabel(modelKey, index) {
+        const match = modelKey.match(/(\d+)$/);
+        if (match) return 'Model ' + match[1];
+        return modelKey.replace(/_/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase()) || ('Model ' + (index + 1));
+    }
+
+    function activeModelState() {
+        return state.models[state.activeModel];
+    }
+
+    function reviewedCount(modelState) {
+        const diag = modelState.diagnosis_feedback.filter(item => item.label).length;
+        const desc = modelState.description_feedback.filter(item => item.label).length;
+        return diag + desc;
+    }
+
+    function totalCount(modelState) {
+        return modelState.diagnosis_feedback.length + modelState.description_feedback.length;
+    }
+
+    function tabStatus(modelState) {
+        const reviewed = reviewedCount(modelState);
+        const total = totalCount(modelState);
+        if (!reviewed) return 'Not started';
+        if (reviewed >= total && total > 0) return 'Complete';
+        return reviewed + ' / ' + total + ' reviewed';
+    }
+
+    function syncHiddenPayload() {
+        const activeState = activeModelState();
+        activeState.other_feedback = otherFeedbackEl.value;
+        activeState.difficulty = difficultyInputEl.value;
+
+        const payload = {
+            active_model: state.activeModel,
+            models: {}
+        };
+
+        modelKeys.forEach(modelKey => {
+            const modelState = state.models[modelKey];
+            payload.models[modelKey] = {
+                diagnosis_feedback: modelState.diagnosis_feedback.map(item => ({
+                    text: item.text,
+                    label: item.label,
+                    feedback: item.feedback,
+                    crops: item.crops || []
+                })),
+                description_feedback: modelState.description_feedback.map(item => ({
+                    text: item.text,
+                    label: item.label,
+                    feedback: item.feedback,
+                    crops: item.crops || []
+                })),
+                other_feedback: modelState.other_feedback,
+                other_feedback_crops: modelState.other_feedback_crops || [],
+                difficulty: modelState.difficulty || null,
+                raw_state: {
+                    diagnoses: modelState.diagnoses,
+                    descriptions: modelState.descriptions
+                }
+            };
+        });
+
+        reviewDataInputEl.value = JSON.stringify(payload);
+    }
+
+    function getFieldTarget(fieldEl) {
+        const modelState = activeModelState();
+        if (!fieldEl || !modelState) return null;
+
+        if (fieldEl.id === 'other-feedback') {
+            return {
+                getCrops: () => modelState.other_feedback_crops,
+                setCrops: crops => { modelState.other_feedback_crops = crops; },
+                updateText: value => { modelState.other_feedback = value; }
+            };
+        }
+
+        const kind = fieldEl.dataset.kind;
+        const index = Number(fieldEl.dataset.index);
+        if (!Number.isInteger(index)) return null;
+
+        const itemList = kind === 'diag'
+            ? modelState.diagnosis_feedback
+            : kind === 'desc'
+            ? modelState.description_feedback
+            : null;
+
+        if (!itemList || !itemList[index]) return null;
+
+        return {
+            getCrops: () => itemList[index].crops || [],
+            setCrops: crops => { itemList[index].crops = crops; },
+            updateText: value => { itemList[index].feedback = value; }
+        };
+    }
+
+    function getFieldCrops(fieldEl) {
+        const target = getFieldTarget(fieldEl);
+        return target ? target.getCrops() : [];
+    }
+
+    function setFieldCrops(fieldEl, crops) {
+        const target = getFieldTarget(fieldEl);
+        if (target) target.setCrops(crops);
+    }
+
+    function findEvidenceDiv(fieldEl) {
+        if (!fieldEl) return null;
+        if (fieldEl.id && document.getElementById(fieldEl.id + '-ev')) {
+            return document.getElementById(fieldEl.id + '-ev');
+        }
+        const parent = fieldEl.parentElement;
+        return parent ? parent.querySelector('.field-evidence') : null;
+    }
+
+    function renderFieldEvidenceInto(container, fieldEl) {
+        const crops = getFieldCrops(fieldEl);
+        container.innerHTML = '';
+        if (!crops.length) return;
+
+        const imgSrc = imgEl.src;
+        const im = new Image();
+        im.onload = () => {
+            const nw = im.naturalWidth;
+            const nh = im.naturalHeight;
+            crops.forEach((crop, idx) => {
+                const cropPxW = crop.w * nw;
+                const cropPxH = crop.h * nh;
+                const maxThumb = 48;
+                const sc = Math.min(maxThumb / cropPxW, maxThumb / cropPxH, 1);
+                const dispW = Math.max(1, cropPxW * sc);
+                const dispH = Math.max(1, cropPxH * sc);
+
+                const div = document.createElement('div');
+                div.className = 'evidence-item';
+                div.dataset.prevSrc = imgSrc;
+                div.dataset.prevCrop = JSON.stringify(crop);
+                div.dataset.prevNw = nw;
+                div.dataset.prevNh = nh;
+
+                const wrapper = document.createElement('div');
+                wrapper.className = 'ev-crop';
+                wrapper.style.width = dispW + 'px';
+                wrapper.style.height = dispH + 'px';
+
+                const thumb = document.createElement('img');
+                thumb.src = imgSrc;
+                thumb.style.width = (nw * sc) + 'px';
+                thumb.style.height = (nh * sc) + 'px';
+                thumb.style.left = (-crop.x * nw * sc) + 'px';
+                thumb.style.top = (-crop.y * nh * sc) + 'px';
+                wrapper.appendChild(thumb);
+
+                const label = document.createElement('div');
+                label.className = 'ev-label';
+                label.textContent = 'Ev ' + (idx + 1);
+
+                const removeButton = document.createElement('button');
+                removeButton.type = 'button';
+                removeButton.className = 'ev-remove';
+                removeButton.innerHTML = '&times;';
+                removeButton.onclick = () => removeFieldCrop(fieldEl, idx, container);
+
+                div.appendChild(wrapper);
+                div.appendChild(label);
+                div.appendChild(removeButton);
+                container.appendChild(div);
+            });
+        };
+        im.src = imgSrc;
+    }
+
+    function removeFieldCrop(fieldEl, idx, evDiv) {
+        floatPrev.style.display = 'none';
+        const oldLen = getFieldCrops(fieldEl).length;
+        const crops = getFieldCrops(fieldEl).filter((_, i) => i !== idx);
+        setFieldCrops(fieldEl, crops);
+
+        let text = fieldEl.value;
+        const removed = idx + 1;
+        text = text.replace(new RegExp('\\[ev\\s+' + removed + '\\]\\s?', 'g'), '');
+        for (let n = removed + 1; n <= oldLen; n++) {
+            text = text.replace(new RegExp('\\[ev\\s+' + n + '\\]', 'g'), '[ev ' + (n - 1) + ']');
+        }
+        fieldEl.value = text;
+
+        const target = getFieldTarget(fieldEl);
+        if (target) target.updateText(fieldEl.value);
+        syncHiddenPayload();
+        if (evDiv) renderFieldEvidenceInto(evDiv, fieldEl);
+    }
+
+    function syncFieldCrops(fieldEl) {
+        const crops = getFieldCrops(fieldEl);
+        if (!crops.length) return;
+
+        const present = new Set();
+        const re = /\[ev\s+(\d+)\]/g;
+        let match;
+        while ((match = re.exec(fieldEl.value)) !== null) {
+            present.add(parseInt(match[1], 10));
+        }
+        if (present.size === crops.length) return;
+
+        const kept = [];
+        const oldToNew = {};
+        for (let i = 0; i < crops.length; i++) {
+            if (present.has(i + 1)) {
+                oldToNew[i + 1] = kept.length + 1;
+                kept.push(crops[i]);
+            }
+        }
+        setFieldCrops(fieldEl, kept);
+
+        let text = fieldEl.value;
+        Object.entries(oldToNew).forEach(([oldVal, newVal]) => {
+            if (+oldVal !== newVal) {
+                text = text.replace(new RegExp('\\[ev\\s+' + oldVal + '\\]', 'g'), '[ev ' + newVal + ']');
+            }
+        });
+        fieldEl.value = text;
+
+        const target = getFieldTarget(fieldEl);
+        if (target) target.updateText(text);
+
+        const evDiv = findEvidenceDiv(fieldEl);
+        if (evDiv) renderFieldEvidenceInto(evDiv, fieldEl);
+        syncHiddenPayload();
+    }
+
+    function addCropEvidence(crop) {
+        const fieldEl = lastFocusedInput || otherFeedbackEl;
+        if (!fieldEl) return;
+
+        const crops = [...getFieldCrops(fieldEl), crop];
+        setFieldCrops(fieldEl, crops);
+
+        const marker = '[ev ' + crops.length + '] ';
+        const pos = fieldEl.selectionStart || fieldEl.value.length;
+        fieldEl.value = fieldEl.value.slice(0, pos) + marker + fieldEl.value.slice(pos);
+        fieldEl.focus();
+        fieldEl.selectionStart = fieldEl.selectionEnd = pos + marker.length;
+
+        const target = getFieldTarget(fieldEl);
+        if (target) target.updateText(fieldEl.value);
+
+        const evDiv = findEvidenceDiv(fieldEl);
+        if (evDiv) renderFieldEvidenceInto(evDiv, fieldEl);
+        syncHiddenPayload();
+    }
+
+    function fitImage() {
+        if (!imgEl.naturalWidth) return;
+        const cw = containerEl.clientWidth;
+        const nw = imgEl.naturalWidth;
+        const nh = imgEl.naturalHeight;
+        const maxH = window.innerHeight * 0.85;
+        let dw = cw;
+        let dh = cw * (nh / nw);
+        if (dh > maxH) {
+            dh = maxH;
+            dw = maxH * (nw / nh);
+        }
+        containerEl.style.height = dh + 'px';
+        state.baseW = dw;
+        state.baseH = dh;
+        updateTransform();
+    }
+
+    function updateTransform() {
+        const cw = containerEl.clientWidth;
+        const ch = containerEl.clientHeight;
+        const cx = (cw - state.baseW * state.zoom) / 2 + state.panX;
+        const cy = (ch - state.baseH * state.zoom) / 2 + state.panY;
+        imgEl.style.width = state.baseW + 'px';
+        imgEl.style.height = state.baseH + 'px';
+        imgEl.style.transformOrigin = '0 0';
+        imgEl.style.transform = 'translate(' + cx + 'px,' + cy + 'px) scale(' + state.zoom + ')';
+        zoomLbl.textContent = Math.round(state.zoom * 100) + '%';
+    }
+
+    function resetView() {
+        state.zoom = 1;
+        state.panX = 0;
+        state.panY = 0;
+        updateTransform();
+    }
+
+    function zoomBy(delta, cx, cy) {
+        const oldZ = state.zoom;
+        state.zoom = Math.min(Math.max(state.zoom * (1 + delta), 0.5), 8);
+        if (cx !== undefined) {
+            const cw = containerEl.clientWidth;
+            const ch = containerEl.clientHeight;
+            const oldIx = (cw - state.baseW * oldZ) / 2 + state.panX;
+            const oldIy = (ch - state.baseH * oldZ) / 2 + state.panY;
+            const ix = (cx - oldIx) / oldZ;
+            const iy = (cy - oldIy) / oldZ;
+            const newIx = (cw - state.baseW * state.zoom) / 2 + state.panX;
+            const newIy = (ch - state.baseH * state.zoom) / 2 + state.panY;
+            state.panX += cx - (newIx + ix * state.zoom);
+            state.panY += cy - (newIy + iy * state.zoom);
+        }
+        updateTransform();
+    }
+
+    function screenToImgNorm(sx, sy) {
+        const cw = containerEl.clientWidth;
+        const ch = containerEl.clientHeight;
+        const imgCx = (cw - state.baseW * state.zoom) / 2 + state.panX;
+        const imgCy = (ch - state.baseH * state.zoom) / 2 + state.panY;
+        const ix = (sx - imgCx) / (state.baseW * state.zoom);
+        const iy = (sy - imgCy) / (state.baseH * state.zoom);
+        return {
+            x: Math.max(0, Math.min(1, ix)),
+            y: Math.max(0, Math.min(1, iy))
+        };
+    }
+
+    function renderItemList(container, items, kind, labelPrefix, onUpdate) {
+        container.innerHTML = '';
+        if (!items.length) {
+            const empty = document.createElement('div');
+            empty.className = 'review-row';
+            empty.innerHTML = '<span class="rev-text">No items available for this section.</span>';
+            container.appendChild(empty);
+            return;
+        }
+
+        items.forEach((item, index) => {
+            const rowDiv = document.createElement('div');
+            rowDiv.className = 'review-row';
+            if (item.label) rowDiv.classList.add('rev-' + item.label);
+
+            const numEl = document.createElement('span');
+            numEl.className = 'rev-num';
+            numEl.textContent = labelPrefix + ' ' + (index + 1);
+            rowDiv.appendChild(numEl);
+
+            const textEl = document.createElement('span');
+            textEl.className = 'rev-text';
+            textEl.textContent = item.text;
+            rowDiv.appendChild(textEl);
+
+            const actions = document.createElement('div');
+            actions.className = 'rev-actions';
+
+            const clearCorrection = () => {
+                item.feedback = '';
+                item.crops = [];
+            };
+
+            const btnOk = document.createElement('button');
+            btnOk.type = 'button';
+            btnOk.className = 'rev-btn rev-ok' + (item.label === 'correct' ? ' active' : '');
+            btnOk.innerHTML = '&#x2713;';
+            btnOk.dataset.tip = 'Correct';
+            btnOk.onclick = () => {
+                item.label = item.label === 'correct' ? '' : 'correct';
+                clearCorrection();
+                onUpdate();
+            };
+
+            const btnNo = document.createElement('button');
+            btnNo.type = 'button';
+            btnNo.className = 'rev-btn rev-no' + (item.label === 'incorrect' ? ' active' : '');
+            btnNo.innerHTML = '&#x2717;';
+            btnNo.dataset.tip = 'Incorrect';
+            btnNo.onclick = () => {
+                const wasIncorrect = item.label === 'incorrect';
+                item.label = wasIncorrect ? '' : 'incorrect';
+                if (wasIncorrect) clearCorrection();
+                onUpdate();
+            };
+
+            const btnMaybe = document.createElement('button');
+            btnMaybe.type = 'button';
+            btnMaybe.className = 'rev-btn rev-maybe' + (item.label === 'maybe' ? ' active' : '');
+            btnMaybe.innerHTML = '?';
+            btnMaybe.dataset.tip = 'Maybe';
+            btnMaybe.onclick = () => {
+                item.label = item.label === 'maybe' ? '' : 'maybe';
+                clearCorrection();
+                onUpdate();
+            };
+
+            actions.appendChild(btnOk);
+            actions.appendChild(btnNo);
+            actions.appendChild(btnMaybe);
+            rowDiv.appendChild(actions);
+            container.appendChild(rowDiv);
+
+            if (item.label === 'incorrect') {
+                const corrDiv = document.createElement('div');
+                corrDiv.className = 'rev-correction';
+
+                const textarea = document.createElement('textarea');
+                textarea.rows = 3;
+                textarea.placeholder = 'What should it say instead?';
+                textarea.value = item.feedback || '';
+                textarea.dataset.kind = kind;
+                textarea.dataset.index = String(index);
+                textarea.oninput = () => {
+                    item.feedback = textarea.value;
+                    syncFieldCrops(textarea);
+                    syncHiddenPayload();
+                };
+                corrDiv.appendChild(textarea);
+
+                const evDiv = document.createElement('div');
+                evDiv.className = 'field-evidence';
+                corrDiv.appendChild(evDiv);
+                renderFieldEvidenceInto(evDiv, textarea);
+
+                container.appendChild(corrDiv);
+            }
+        });
+    }
+
+    function renderTabs() {
+        tabsEl.innerHTML = '';
+        modelKeys.forEach((modelKey, index) => {
+            const modelState = state.models[modelKey];
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'model-tab' + (state.activeModel === modelKey ? ' active' : '');
+            btn.textContent = getModelLabel(modelKey, index) + ' · ' + tabStatus(modelState);
+            btn.addEventListener('click', () => {
+                syncHiddenPayload();
+                state.activeModel = modelKey;
+                render();
+            });
+            tabsEl.appendChild(btn);
+        });
+    }
+
+    function render() {
+        const modelState = activeModelState();
+        if (!modelState) return;
+
+        renderTabs();
+        statusLabelEl.textContent = tabStatus(modelState);
+        diagnosisCountEl.textContent = modelState.diagnoses.length;
+        descriptionCountEl.textContent = modelState.descriptions.length;
+        otherFeedbackEl.value = modelState.other_feedback || '';
+        difficultyInputEl.value = modelState.difficulty || 3;
+        difficultyValueEl.textContent = difficultyInputEl.value;
+        imgEl.onload = fitImage;
+        imgEl.src = '/media/' + caseData.image_path;
+        resetView();
+        document.getElementById('img-id').textContent = '{{ case_id }}';
+
+        renderItemList(diagnosisListEl, modelState.diagnosis_feedback, 'diag', 'Diagnosis', render);
+        renderItemList(descriptionListEl, modelState.description_feedback, 'desc', 'Description', render);
+        renderFieldEvidenceInto(document.getElementById('other-feedback-ev'), otherFeedbackEl);
+        syncHiddenPayload();
+    }
+
+    document.addEventListener('focusin', event => {
+        if (event.target.tagName === 'TEXTAREA' || (event.target.tagName === 'INPUT' && event.target.type === 'text')) {
+            lastFocusedInput = event.target;
+        }
+    });
+
+    containerEl.addEventListener('wheel', event => {
+        event.preventDefault();
+        const rect = containerEl.getBoundingClientRect();
+        zoomBy(event.deltaY < 0 ? 0.15 : -0.15, event.clientX - rect.left, event.clientY - rect.top);
+    }, { passive: false });
+
+    document.getElementById('btn-zin').onclick = () => zoomBy(0.25);
+    document.getElementById('btn-zout').onclick = () => zoomBy(-0.25);
+    document.getElementById('btn-zreset').onclick = resetView;
+
+    containerEl.addEventListener('mousedown', event => {
+        if (state.cropMode || event.button !== 0) return;
+        state.isPanning = true;
+        state.panStartX = event.clientX;
+        state.panStartY = event.clientY;
+        state.panOrigX = state.panX;
+        state.panOrigY = state.panY;
+        containerEl.classList.add('panning');
+        event.preventDefault();
+    });
+
+    window.addEventListener('mousemove', event => {
+        if (!state.isPanning) return;
+        state.panX = state.panOrigX + (event.clientX - state.panStartX);
+        state.panY = state.panOrigY + (event.clientY - state.panStartY);
+        updateTransform();
+    });
+
+    window.addEventListener('mouseup', () => {
+        if (state.isPanning) {
+            state.isPanning = false;
+            containerEl.classList.remove('panning');
+        }
+    });
+
+    btnCrop.onclick = () => {
+        state.cropMode = !state.cropMode;
+        btnCrop.classList.toggle('active', state.cropMode);
+        cropOverlay.style.display = state.cropMode ? 'block' : 'none';
+        containerEl.classList.toggle('crop-active', state.cropMode);
+    };
+
+    cropOverlay.addEventListener('mousedown', event => {
+        if (!state.cropMode) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const rect = containerEl.getBoundingClientRect();
+        cropStart = { sx: event.clientX - rect.left, sy: event.clientY - rect.top };
+        cropSel.style.display = 'none';
+    });
+
+    cropOverlay.addEventListener('mousemove', event => {
+        if (!cropStart) return;
+        const rect = containerEl.getBoundingClientRect();
+        const mx = event.clientX - rect.left;
+        const my = event.clientY - rect.top;
+        const x1 = Math.min(cropStart.sx, mx);
+        const y1 = Math.min(cropStart.sy, my);
+        const x2 = Math.max(cropStart.sx, mx);
+        const y2 = Math.max(cropStart.sy, my);
+        cropSel.style.display = 'block';
+        cropSel.style.left = x1 + 'px';
+        cropSel.style.top = y1 + 'px';
+        cropSel.style.width = (x2 - x1) + 'px';
+        cropSel.style.height = (y2 - y1) + 'px';
+    });
+
+    cropOverlay.addEventListener('mouseup', event => {
+        if (!cropStart) return;
+        const rect = containerEl.getBoundingClientRect();
+        const mx = event.clientX - rect.left;
+        const my = event.clientY - rect.top;
+        const p1 = screenToImgNorm(cropStart.sx, cropStart.sy);
+        const p2 = screenToImgNorm(mx, my);
+        cropSel.style.display = 'none';
+        cropStart = null;
+        const x = Math.min(p1.x, p2.x);
+        const y = Math.min(p1.y, p2.y);
+        const w = Math.abs(p2.x - p1.x);
+        const h = Math.abs(p2.y - p1.y);
+        if (w < 0.01 || h < 0.01) return;
+        addCropEvidence({ x, y, w, h });
+        state.cropMode = false;
+        btnCrop.classList.remove('active');
+        cropOverlay.style.display = 'none';
+        containerEl.classList.remove('crop-active');
+    });
+
+    otherFeedbackEl.addEventListener('input', () => {
+        activeModelState().other_feedback = otherFeedbackEl.value;
+        syncFieldCrops(otherFeedbackEl);
+        syncHiddenPayload();
+        renderFieldEvidenceInto(document.getElementById('other-feedback-ev'), otherFeedbackEl);
+    });
+
+    difficultyInputEl.addEventListener('input', () => {
+        activeModelState().difficulty = difficultyInputEl.value;
+        difficultyValueEl.textContent = difficultyInputEl.value;
+        syncHiddenPayload();
+        renderTabs();
+    });
+
+    document.addEventListener('keydown', event => {
+        const el = event.target;
+        if (!(el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && el.type === 'text'))) return;
+        if (event.key !== 'Backspace' && event.key !== 'Delete') return;
+
+        const text = el.value;
+        const pos = el.selectionStart;
+        const selEnd = el.selectionEnd;
+        if (pos !== selEnd) return;
+
+        const re = /\[ev\s+\d+\]/g;
+        let match;
+        while ((match = re.exec(text)) !== null) {
+            const start = match.index;
+            const end = match.index + match[0].length;
+            const hit = event.key === 'Backspace'
+                ? (pos > start && pos <= end)
+                : (pos >= start && pos < end);
+            if (hit) {
+                event.preventDefault();
+                el.value = text.slice(0, start) + text.slice(end);
+                el.selectionStart = el.selectionEnd = start;
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+                return;
+            }
+        }
+    });
+
+    const floatPrev = document.createElement('div');
+    floatPrev.className = 'ev-float-preview';
+    document.body.appendChild(floatPrev);
+
+    document.addEventListener('mouseenter', event => {
+        const item = event.target.closest('.evidence-item');
+        if (!item || !item.dataset.prevCrop) return;
+        const crop = JSON.parse(item.dataset.prevCrop);
+        const nw = +item.dataset.prevNw;
+        const nh = +item.dataset.prevNh;
+        const cropPxW = crop.w * nw;
+        const cropPxH = crop.h * nh;
+        const prevMax = 240;
+        const psc = Math.min(prevMax / cropPxW, prevMax / cropPxH, 1);
+        const pW = Math.max(1, cropPxW * psc);
+        const pH = Math.max(1, cropPxH * psc);
+
+        floatPrev.style.width = pW + 'px';
+        floatPrev.style.height = pH + 'px';
+        floatPrev.innerHTML = '';
+        const img = document.createElement('img');
+        img.src = item.dataset.prevSrc;
+        img.style.width = (nw * psc) + 'px';
+        img.style.height = (nh * psc) + 'px';
+        img.style.left = (-crop.x * nw * psc) + 'px';
+        img.style.top = (-crop.y * nh * psc) + 'px';
+        floatPrev.appendChild(img);
+
+        const rect = item.getBoundingClientRect();
+        let top = rect.top - pH - 8;
+        if (top < 4) top = rect.bottom + 8;
+        let left = rect.left + rect.width / 2 - pW / 2;
+        left = Math.max(4, Math.min(left, window.innerWidth - pW - 4));
+        floatPrev.style.top = top + 'px';
+        floatPrev.style.left = left + 'px';
+        floatPrev.style.display = 'block';
+    }, true);
+
+    document.addEventListener('mouseleave', event => {
+        const item = event.target.closest('.evidence-item');
+        if (item) floatPrev.style.display = 'none';
+    }, true);
+
+    document.querySelectorAll('.nav-btn').forEach(button => {
+        button.addEventListener('click', () => {
+            syncHiddenPayload();
+            actionInputEl.value = button.dataset.action;
+            document.getElementById('annotation-form').submit();
+        });
+    });
+
+    window.addEventListener('resize', fitImage);
+    render();
+})();
+</script>
+{% endif %}
 {% endblock %}

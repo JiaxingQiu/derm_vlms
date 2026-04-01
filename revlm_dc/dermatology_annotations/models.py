@@ -1,6 +1,6 @@
 from django.db import models
 
-# Models here
+
 class Dermatologist(models.Model):
     login_id = models.CharField(max_length=100, unique=True)
     current_case_index = models.PositiveIntegerField(default=0)
@@ -9,17 +9,23 @@ class Dermatologist(models.Model):
     def __str__(self):
         return self.login_id
 
+
 class Annotation(models.Model):
     dermatologist = models.ForeignKey(
         Dermatologist,
         on_delete=models.CASCADE,
-        related_name="annotations"
+        related_name="annotations",
     )
     case_id = models.CharField(max_length=100)
 
+    # Legacy fields kept for compatibility with the existing template/admin.
     model_response_correct = models.BooleanField(default=False)
     textual_feedback = models.TextField(blank=True, null=True)
     visual_feedback = models.TextField(blank=True, null=True)
+
+    # Frontend payload for the richer interface in index.html.
+    review_data = models.JSONField(default=dict, blank=True)
+    difficulty = models.PositiveSmallIntegerField(blank=True, null=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -28,7 +34,7 @@ class Annotation(models.Model):
         constraints = [
             models.UniqueConstraint(
                 fields=["dermatologist", "case_id"],
-                name="unique_dermatologist_case"
+                name="unique_dermatologist_case",
             )
         ]
 

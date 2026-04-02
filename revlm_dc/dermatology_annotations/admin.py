@@ -64,6 +64,7 @@ class DermatologistAdmin(admin.ModelAdmin):
     list_display = (
         "login_id",
         "current_case_index",
+        "current_model_index",
         "is_done",
         "completed_cases_count",
         "total_cases_count",

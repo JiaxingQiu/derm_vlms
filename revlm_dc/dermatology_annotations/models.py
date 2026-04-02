@@ -4,6 +4,7 @@ from django.db import models
 class Dermatologist(models.Model):
     login_id = models.CharField(max_length=100, unique=True)
     current_case_index = models.PositiveIntegerField(default=0)
+    current_model_index = models.PositiveIntegerField(default=0)
     is_done = models.BooleanField(default=False)
 
     def __str__(self):

@@ -246,6 +246,20 @@ def login_view(request):
     return render(request, "login.html", {"error_message": error_message})
 
 
+def get_model_keys(case_data):
+    return [k for k in case_data if k != "image_path" and isinstance(case_data[k], dict)]
+
+
+def build_page_sequence(case_ids, annotations_data):
+    pages = []
+    for case_id in case_ids:
+        case_data = annotations_data.get(case_id, {})
+        model_keys = get_model_keys(case_data)
+        for model_key in model_keys:
+            pages.append((case_id, model_key))
+    return pages
+
+
 def annotations_view(request):
     login_id = request.session.get("login_id")
     if not login_id:
@@ -266,7 +280,23 @@ def annotations_view(request):
             },
         )
 
-    if dermatologist.current_case_index >= len(case_ids):
+    pages = build_page_sequence(case_ids, annotations_data)
+    total_pages = len(pages)
+
+    current_case_idx = dermatologist.current_case_index
+    current_model_idx = dermatologist.current_model_index
+
+    if current_case_idx >= len(case_ids):
+        flat_index = total_pages
+    else:
+        target_case_id = case_ids[current_case_idx]
+        flat_index = 0
+        for pi, (pid, _) in enumerate(pages):
+            if pid == target_case_id:
+                flat_index = pi + current_model_idx
+                break
+
+    if flat_index >= total_pages:
         if request.method == "POST":
             action = request.POST.get("action")
 
@@ -276,7 +306,13 @@ def annotations_view(request):
                 return redirect("thank_you")
 
             if action == "done_no":
-                dermatologist.current_case_index = len(case_ids) - 1
+                flat_index = total_pages - 1
+                case_id, model_key = pages[flat_index]
+                ci = case_ids.index(case_id)
+                case_data = annotations_data[case_id]
+                mi = get_model_keys(case_data).index(model_key)
+                dermatologist.current_case_index = ci
+                dermatologist.current_model_index = mi
                 dermatologist.save()
                 return redirect("annotations")
 
@@ -292,10 +328,10 @@ def annotations_view(request):
     if dermatologist.is_done:
         return redirect("thank_you")
 
-    current_index = dermatologist.current_case_index
-    current_case_id = case_ids[current_index]
+    flat_index = min(flat_index, total_pages - 1)
+    current_case_id, current_model_key = pages[flat_index]
     current_case_data = annotations_data[current_case_id]
-    case_models = get_case_model_data(current_case_data)
+    current_model_data = current_case_data[current_model_key]
 
     annotation, _ = Annotation.objects.get_or_create(
         dermatologist=dermatologist,
@@ -306,6 +342,7 @@ def annotations_view(request):
         payload = parse_request_payload(request)
         action = payload.get("action", "save")
 
+        payload["model_name"] = current_model_key
         if (
             is_json_request(request)
             or isinstance(payload.get("models"), dict)
@@ -321,15 +358,25 @@ def annotations_view(request):
 
         annotation.save()
 
-        if action == "previous" and current_index > 0:
-            dermatologist.current_case_index = current_index - 1
-            dermatologist.save()
-        elif action == "next" and current_index < len(case_ids) - 1:
-            dermatologist.current_case_index = current_index + 1
-            dermatologist.save()
+        new_flat = flat_index
+        if action == "previous" and flat_index > 0:
+            new_flat = flat_index - 1
+        elif action == "next" and flat_index < total_pages - 1:
+            new_flat = flat_index + 1
         elif action == "finish":
+            new_flat = total_pages
+
+        if new_flat >= total_pages:
             dermatologist.current_case_index = len(case_ids)
-            dermatologist.save()
+            dermatologist.current_model_index = 0
+        else:
+            nav_case_id, nav_model_key = pages[new_flat]
+            nav_ci = case_ids.index(nav_case_id)
+            nav_mi = get_model_keys(annotations_data[nav_case_id]).index(nav_model_key)
+            dermatologist.current_case_index = nav_ci
+            dermatologist.current_model_index = nav_mi
+
+        dermatologist.save()
 
         if is_json_request(request):
             return JsonResponse(
@@ -337,7 +384,8 @@ def annotations_view(request):
                     "ok": True,
                     "action": action,
                     "case_id": current_case_id,
-                    "current_index": dermatologist.current_case_index,
+                    "model_key": current_model_key,
+                    "current_page": new_flat,
                     "annotation_id": annotation.id,
                     "saved_review_data": annotation.review_data,
                 }
@@ -345,17 +393,20 @@ def annotations_view(request):
 
         return redirect("annotations")
 
+    saved_model_review = (annotation.review_data or {}).get("models", {}).get(current_model_key, {})
+
     context = {
         "login_id": login_id,
         "case_id": current_case_id,
         "case_data": current_case_data,
-        "case_models": case_models,
+        "model_key": current_model_key,
+        "model_data": current_model_data,
         "annotation": annotation,
-        "current_index": current_index,
-        "total_cases": len(case_ids),
-        "has_previous": current_index > 0,
-        "has_next": current_index < len(case_ids) - 1,
-        "annotation_review_data_json": json.dumps(annotation.review_data),
+        "saved_model_review": saved_model_review,
+        "current_page": flat_index,
+        "total_pages": total_pages,
+        "has_previous": flat_index > 0,
+        "has_next": flat_index < total_pages - 1,
     }
 
     return render(request, "annotations.html", context)

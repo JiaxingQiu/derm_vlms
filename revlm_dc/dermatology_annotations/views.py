@@ -8,7 +8,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from .models import Annotation, Dermatologist
 
 
-def load_users_data():
+def load_valid_users():
     json_path = Path(settings.BASE_DIR) / "data" / "users.json"
     with open(json_path, "r", encoding="utf-8") as f:
         return json.load(f)["users"]
@@ -234,9 +234,9 @@ def login_view(request):
 
     if request.method == "POST":
         login_id = request.POST.get("login_id", "").strip()
-        data = load_users_data()
+        valid_users = load_valid_users()
 
-        if login_id not in data:
+        if login_id not in valid_users:
             error_message = "invalid login id"
         else:
             Dermatologist.objects.get_or_create(login_id=login_id)
@@ -260,15 +260,45 @@ def build_page_sequence(case_ids, annotations_data):
     return pages
 
 
+def is_page_complete(review_data, model_key, case_data):
+    model_review = (review_data or {}).get("models", {}).get(model_key, {})
+    source = case_data.get(model_key, {})
+    total = len(source.get("diagnoses", [])) + len(source.get("descriptions", []))
+    if total == 0:
+        return True
+    reviewed = 0
+    for item in model_review.get("diagnosis_feedback", []):
+        if item.get("label"):
+            reviewed += 1
+    for item in model_review.get("description_feedback", []):
+        if item.get("label"):
+            reviewed += 1
+    return reviewed >= total
+
+
+def find_first_incomplete_page(pages, annotations_data, dermatologist):
+    annotations_cache = {}
+    for pi, (case_id, model_key) in enumerate(pages):
+        if case_id not in annotations_cache:
+            try:
+                ann = Annotation.objects.get(dermatologist=dermatologist, case_id=case_id)
+                annotations_cache[case_id] = ann.review_data
+            except Annotation.DoesNotExist:
+                annotations_cache[case_id] = {}
+        case_data = annotations_data.get(case_id, {})
+        if not is_page_complete(annotations_cache[case_id], model_key, case_data):
+            return pi
+    return len(pages)
+
+
 def annotations_view(request):
     login_id = request.session.get("login_id")
     if not login_id:
         return redirect("login")
 
-    users_data = load_users_data()
     annotations_data = load_annotations_data()
     dermatologist = get_object_or_404(Dermatologist, login_id=login_id)
-    case_ids = users_data.get(login_id, [])
+    case_ids = sorted(annotations_data.keys())
 
     if not case_ids:
         return render(
@@ -283,18 +313,20 @@ def annotations_view(request):
     pages = build_page_sequence(case_ids, annotations_data)
     total_pages = len(pages)
 
-    current_case_idx = dermatologist.current_case_index
-    current_model_idx = dermatologist.current_model_index
-
-    if current_case_idx >= len(case_ids):
-        flat_index = total_pages
+    if request.method == "GET":
+        flat_index = find_first_incomplete_page(pages, annotations_data, dermatologist)
     else:
-        target_case_id = case_ids[current_case_idx]
-        flat_index = 0
-        for pi, (pid, _) in enumerate(pages):
-            if pid == target_case_id:
-                flat_index = pi + current_model_idx
-                break
+        current_case_idx = dermatologist.current_case_index
+        current_model_idx = dermatologist.current_model_index
+        if current_case_idx >= len(case_ids):
+            flat_index = total_pages
+        else:
+            target_case_id = case_ids[current_case_idx]
+            flat_index = 0
+            for pi, (pid, _) in enumerate(pages):
+                if pid == target_case_id:
+                    flat_index = pi + current_model_idx
+                    break
 
     if flat_index >= total_pages:
         if request.method == "POST":

@@ -16,10 +16,9 @@ def load_annotations_data():
         return json.load(f)
 
 
-def load_users_data():
-    json_path = Path(settings.BASE_DIR) / "data" / "users.json"
-    with open(json_path, "r", encoding="utf-8") as f:
-        return json.load(f)["users"]
+def get_total_case_count():
+    data = load_annotations_data()
+    return len(data)
 
 
 class AnnotationInline(admin.TabularInline):
@@ -86,8 +85,7 @@ class DermatologistAdmin(admin.ModelAdmin):
         return custom_urls + urls
 
     def get_user_case_count(self, obj):
-        data = load_users_data()
-        return len(data.get(obj.login_id, []))
+        return get_total_case_count()
 
     def completed_cases_count(self, obj):
         return obj.annotations.count()

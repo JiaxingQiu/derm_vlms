@@ -49,3 +49,4 @@ revlm_dc/data/
 revlm_dc/images/
 db.sqlite3
 revlm_dc/db.sqlite3
+jobs/

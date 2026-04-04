@@ -1,4 +1,5 @@
 import json
+import re
 from pathlib import Path
 
 from django.conf import settings
@@ -267,12 +268,12 @@ def is_page_complete(review_data, model_key, case_data):
     if total == 0:
         return True
     reviewed = 0
-    for item in model_review.get("diagnosis_feedback", []):
+    all_items = list(model_review.get("diagnosis_feedback", [])) + list(model_review.get("description_feedback", []))
+    for item in all_items:
         if item.get("label"):
             reviewed += 1
-    for item in model_review.get("description_feedback", []):
-        if item.get("label"):
-            reviewed += 1
+        if item.get("label") == "incorrect" and not (item.get("feedback") or "").strip():
+            return False
     return reviewed >= total
 
 
@@ -298,7 +299,10 @@ def annotations_view(request):
 
     annotations_data = load_annotations_data()
     dermatologist = get_object_or_404(Dermatologist, login_id=login_id)
-    case_ids = sorted(annotations_data.keys())
+    def natural_key(s):
+        return [int(c) if c.isdigit() else c.lower() for c in re.split(r'(\d+)', s)]
+
+    case_ids = sorted(annotations_data.keys(), key=natural_key)
 
     if not case_ids:
         return render(
@@ -313,7 +317,9 @@ def annotations_view(request):
     pages = build_page_sequence(case_ids, annotations_data)
     total_pages = len(pages)
 
-    if request.method == "GET":
+    is_nav_redirect = request.method == "GET" and request.GET.get("nav") == "1"
+
+    if request.method == "GET" and not is_nav_redirect:
         flat_index = find_first_incomplete_page(pages, annotations_data, dermatologist)
     else:
         current_case_idx = dermatologist.current_case_index
@@ -346,7 +352,7 @@ def annotations_view(request):
                 dermatologist.current_case_index = ci
                 dermatologist.current_model_index = mi
                 dermatologist.save()
-                return redirect("annotations")
+                return redirect("/annotations/?nav=1")
 
         return render(
             request,
@@ -373,6 +379,14 @@ def annotations_view(request):
     if request.method == "POST":
         payload = parse_request_payload(request)
         action = payload.get("action", "save")
+
+        if action == "reset_all":
+            Annotation.objects.filter(dermatologist=dermatologist).delete()
+            dermatologist.current_case_index = 0
+            dermatologist.current_model_index = 0
+            dermatologist.is_done = False
+            dermatologist.save()
+            return redirect("annotations")
 
         payload["model_name"] = current_model_key
         if (
@@ -423,7 +437,7 @@ def annotations_view(request):
                 }
             )
 
-        return redirect("annotations")
+        return redirect("/annotations/?nav=1")
 
     saved_model_review = (annotation.review_data or {}).get("models", {}).get(current_model_key, {})
 

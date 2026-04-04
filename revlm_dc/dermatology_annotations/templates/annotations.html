@@ -291,7 +291,12 @@ main{max-width:none;margin:0;padding:8px 12px}
 
     function isPageComplete() {
         var total = totalCount();
-        return total === 0 || reviewedCount() >= total;
+        if (total > 0 && reviewedCount() < total) return false;
+        var allFeedbackFilled = true;
+        state.diagnosis_feedback.concat(state.description_feedback).forEach(function (item) {
+            if (item.label === 'incorrect' && !item.feedback.trim()) allFeedbackFilled = false;
+        });
+        return allFeedbackFilled;
     }
 
     function syncHiddenPayload() {
@@ -588,7 +593,7 @@ main{max-width:none;margin:0;padding:8px 12px}
                 corrDiv.className = 'rev-correction' + (item.label === 'maybe' ? ' rev-correction-maybe' : '');
                 var inp = document.createElement('input');
                 inp.type = 'text';
-                inp.placeholder = item.label === 'maybe' ? 'Why? (optional)' : 'What should it say instead?';
+                inp.placeholder = item.label === 'maybe' ? 'Why? (optional)' : 'Why? (required)';
                 inp.value = item.feedback || '';
                 inp.dataset.kind = prefix === 'diag' ? 'diag' : 'desc';
                 inp.dataset.index = String(idx);
@@ -621,7 +626,7 @@ main{max-width:none;margin:0;padding:8px 12px}
     var warnEl;
     function showNavWarning() {
         if (!warnEl) warnEl = document.getElementById('nav-warning');
-        warnEl.innerHTML = '&#x26A0;&#xFE0F; Please review all items before continuing.';
+        warnEl.innerHTML = '&#x26A0;&#xFE0F; Please review all items and provide feedback for incorrect marks before continuing.';
         warnEl.classList.remove('show');
         void warnEl.offsetWidth;
         warnEl.classList.add('show');
@@ -808,15 +813,9 @@ main{max-width:none;margin:0;padding:8px 12px}
 
     /* ===== Reset button ===== */
     document.getElementById('btn-reset').onclick = function () {
-        var ans = prompt('This will clear all feedback for this page.\nType RESET to confirm:');
+        var ans = prompt('This will permanently delete ALL feedback for ALL cases.\nType RESET to confirm:');
         if (ans !== 'RESET') return;
-        state.diagnosis_feedback.forEach(function (item) { item.label = ''; item.feedback = ''; item.crops = []; });
-        state.description_feedback.forEach(function (item) { item.label = ''; item.feedback = ''; item.crops = []; });
-        state.other_feedback = '';
-        state.other_feedback_crops = [];
-        otherFeedbackEl.value = '';
-        syncHiddenPayload();
-        actionInputEl.value = 'save';
+        actionInputEl.value = 'reset_all';
         document.getElementById('annotation-form').submit();
     };
 

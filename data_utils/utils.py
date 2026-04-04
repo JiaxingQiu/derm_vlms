@@ -371,6 +371,111 @@ def process_x_location(df):
 
 
 
+def prepare_all_lesions(df, data_dir, output_dir='results/images'):
+    """Prepare ALL lesions for prediction — all classes, all available image types.
+
+    For each lesion, emits rows for every available image type:
+      - photo  (clinical: 6in preferred, else 1ft)
+      - dscope (dermoscopic)
+      - virtual
+      - combined (side-by-side photo + dscope, only when both exist)
+
+    Returns DataFrame with columns:
+      id, ground_truth, y16, y16_description, image_mode, image_path,
+      original_image_name, lesion_id
+    """
+    data_dir = Path(data_dir)
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    def _resolve(image_path):
+        p = Path(image_path)
+        if p.is_file():
+            return str(p)
+        return str(data_dir / p.name)
+
+    lesion_ids = df['lesion_id'].unique()
+    rows = []
+
+    for num, lid in enumerate(lesion_ids, start=1):
+        lesion = df[df['lesion_id'] == lid]
+        first = lesion.iloc[0]
+        base = {
+            'ground_truth': first['y3'],
+            'y16': first['y16'],
+            'y16_description': first['y16_description'],
+            'lesion_id': lid,
+        }
+
+        photo_src = None
+        dscope_src = None
+
+        # Photo: prefer 6in, fallback to 1ft
+        photo_candidates = lesion[lesion['lesion_distance'] == '6in']
+        if photo_candidates.empty:
+            photo_candidates = lesion[lesion['lesion_distance'] == '1ft']
+        if not photo_candidates.empty:
+            photo_src = _resolve(photo_candidates.iloc[0]['image_path'])
+            fname = f"{num}_photo.jpg"
+            shutil.copy2(photo_src, output_dir / fname)
+            rows.append({**base, 'id': f'{num}_photo', 'image_mode': 'photo',
+                         'image_path': str(output_dir / fname),
+                         'original_image_name': Path(photo_src).name})
+
+        # Dscope
+        dscope_candidates = lesion[lesion['lesion_distance'] == 'dscope']
+        if not dscope_candidates.empty:
+            dscope_src = _resolve(dscope_candidates.iloc[0]['image_path'])
+            fname = f"{num}_dscope.jpg"
+            shutil.copy2(dscope_src, output_dir / fname)
+            rows.append({**base, 'id': f'{num}_dscope', 'image_mode': 'dscope',
+                         'image_path': str(output_dir / fname),
+                         'original_image_name': Path(dscope_src).name})
+
+        # Virtual
+        virtual_candidates = lesion[lesion['lesion_distance'] == 'virtual']
+        if not virtual_candidates.empty:
+            virtual_src = _resolve(virtual_candidates.iloc[0]['image_path'])
+            fname = f"{num}_virtual.jpg"
+            shutil.copy2(virtual_src, output_dir / fname)
+            rows.append({**base, 'id': f'{num}_virtual', 'image_mode': 'virtual',
+                         'image_path': str(output_dir / fname),
+                         'original_image_name': Path(virtual_src).name})
+
+        # Combined: only when both photo and dscope exist
+        if photo_src and dscope_src:
+            photo_img = PILImage.open(photo_src).convert('RGB')
+            dscope_img = PILImage.open(dscope_src).convert('RGB')
+            h = min(photo_img.height, dscope_img.height)
+            photo_img = photo_img.resize(
+                (int(photo_img.width * h / photo_img.height), h), PILImage.LANCZOS)
+            dscope_img = dscope_img.resize(
+                (int(dscope_img.width * h / dscope_img.height), h), PILImage.LANCZOS)
+            combined = PILImage.new('RGB',
+                                    (photo_img.width + dscope_img.width, h))
+            combined.paste(photo_img, (0, 0))
+            combined.paste(dscope_img, (photo_img.width, 0))
+            fname = f"{num}_combined.jpg"
+            combined.save(output_dir / fname, quality=95)
+            rows.append({**base, 'id': f'{num}_combined', 'image_mode': 'combined',
+                         'image_path': str(output_dir / fname),
+                         'original_image_name': (f'{Path(photo_src).name}; '
+                                                 f'{Path(dscope_src).name}')})
+
+    result = pd.DataFrame(rows)
+    col_order = ['id', 'ground_truth', 'y16', 'y16_description', 'image_mode',
+                 'image_path', 'original_image_name', 'lesion_id']
+    result = result[col_order]
+
+    n_lesions = len(lesion_ids)
+    print(f"Prepared {n_lesions} lesions -> {len(result)} rows")
+    print(f"Image modes: {result['image_mode'].value_counts().to_dict()}")
+    print(f"y3 distribution: {result['ground_truth'].value_counts().to_dict()}")
+    print(f"y16 distribution:\n{result['y16'].value_counts()}")
+    print(f"Images saved to: {output_dir}")
+    return result
+
+
 def sample_lesions(df, data_dir, output_dir='results/images',
                    classes=('malignant', 'benign'), n_per_class=5, seed=42):
     """Sample lesions with both dermoscopic and clinical photo images.

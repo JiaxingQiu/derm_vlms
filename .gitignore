@@ -42,3 +42,4 @@ test*
 *.xlsx
 
 revlm_dc/
+jobs/

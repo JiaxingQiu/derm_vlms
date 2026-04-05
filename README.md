@@ -24,6 +24,21 @@ Generate a self-contained HTML interface for expert review of VLM outputs.
 
 The `interface_share/` folder is ready to zip and hand off for database integration and online deployment.
 
+## Annotation Interface (Django)
+
+Expert review interface for VLM outputs. Requires prediction CSVs in `results/`.
+
+```bash
+conda activate dermato_llama
+cd revlm_dc
+python manage.py makemigrations   # first time only
+python manage.py migrate           # first time only
+python manage.py parsedata         # CSV → annotations JSON + copy images
+python manage.py runserver
+```
+
+`parsedata` reads `results/*_predictions_all.csv`, parses VLM responses into diagnoses + descriptions, writes `revlm_dc/data/annotations_data.json`, and copies combined images to `revlm_dc/images/`. Re-run after new predictions arrive.
+
 ---
 
 ## Data

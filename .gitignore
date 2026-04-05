@@ -41,5 +41,7 @@ test*
 # Large spreadsheets
 *.xlsx
 
-revlm_dc/
+revlm_dc/images/
+revlm_dc/data/
+revlm_dc/db.sqlite3
 jobs/

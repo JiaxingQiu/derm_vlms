@@ -155,7 +155,9 @@ _SYNONYM_MAP = {
     "inflammatory": "Non-neoplastic",
     "infectious": "Non-neoplastic",
 
-    # --- Other Benign ---
+    # --- Other Benign (named entities) ---
+    "molluscum contagiosum": "Other Benign",
+    "sebaceous adenoma": "Other Benign",
     "sebaceous hyperplasia": "Other Benign",
     "epidermal cyst": "Other Benign",
     "epidermoid cyst": "Other Benign",
@@ -182,6 +184,41 @@ _SYNONYM_MAP = {
     "papilloma": "Other Benign",
     "arthropod bite": "Other Benign",
     "insect bite": "Other Benign",
+    "corn": "Other Benign",
+    "cafe au lait macule": "Other Benign",
+    "café au lait macule": "Other Benign",
+    "café-au-lait macule": "Other Benign",
+    "cafe-au-lait macule": "Other Benign",
+    "collision lesion": "Other Benign",
+    "adnexal tumor": "Other Benign",
+    "trichoepithelioma": "Other Benign",
+
+    # --- Non-neoplastic (additional) ---
+    "acne vulgaris": "Non-neoplastic",
+    "acne": "Non-neoplastic",
+    "actinic cheilitis": "Non-neoplastic",
+    "chondrodermatitis nodularis helicis": "Non-neoplastic",
+    "furuncle": "Non-neoplastic",
+    "abscess": "Non-neoplastic",
+    "ulcer": "Non-neoplastic",
+    "blepharitis": "Non-neoplastic",
+    "pyoderma gangrenosum": "Non-neoplastic",
+    "xerosis": "Non-neoplastic",
+    "lentigines": "Other Benign",
+    "solar lentigines": "Other Benign",
+    "milium": "Other Benign",
+    "milia": "Other Benign",
+    "closed comedone": "Non-neoplastic",
+    "comedone": "Non-neoplastic",
+    "inflamed follicular lesion": "Non-neoplastic",
+    "inflamed follicular papule": "Non-neoplastic",
+    "acneiform lesion": "Non-neoplastic",
+    "chalazion": "Non-neoplastic",
+    "stye": "Non-neoplastic",
+    "venous insufficiency": "Non-neoplastic",
+    "pigmented purpuric dermatosis": "Non-neoplastic",
+    "early keratinocyte carcinoma": "Squamous Cell Carcinoma",
+    "keratinocyte carcinoma": "Squamous Cell Carcinoma",
 }
 
 # Pre-compile patterns: sort by length descending so longer (more specific)

@@ -19,13 +19,12 @@
     <p>No cases assigned.</p>
 </div>
 {% else %}
-{{ model_data|json_script:"model-data" }}
-{{ saved_model_review|json_script:"saved-review-data" }}
+{% block json_data %}{% endblock %}
 
 <div class="anno-shell">
     <header class="anno-header">
         <h1>Dermatology VLM Evaluation</h1>
-        <span class="header-prompt">Prompt to AI: You are an expert dermatologist. Please describe using dermatological terms to describe the appearance of this lesion. Please give the top 3 diagnoses in your differential.</span>
+        <span class="header-prompt">{% block header_prompt %}{% endblock %}</span>
         <div class="hctl">
             <span class="progress" id="progress">Page {{ current_page|add:1 }} / {{ total_pages }}</span>
             <span class="meta-line">{{ login_id }}</span>
@@ -78,30 +77,7 @@
             </div>
 
             <div class="right-panel">
-                <div class="task-sec">
-                    <div class="vlm-badge" id="vlm-badge">
-                        <span class="vlm-tag">Model</span> {{ model_key }}
-                    </div>
-                    <div class="tc">
-                        <div class="crop-hint">Use Crop &#x2702; to select a region as evidence for any part of your feedback</div>
-
-                        <div class="field" id="diag-section">
-                            <div class="field-label">AI Diagnoses</div>
-                            <div class="diag-list" id="diag-list"></div>
-                        </div>
-
-                        <div class="field" id="desc-section">
-                            <div class="field-label">AI Description</div>
-                            <div class="desc-list" id="desc-list"></div>
-                        </div>
-
-                        <div class="field-label"><span style="font-weight:400;text-transform:none;letter-spacing:0;color:#9ca3af">(optional)</span></div>
-                        <div class="survey" id="survey">
-                            <textarea id="other-feedback" rows="4" placeholder="Other feedback (e.g., important details missing, the order of the diagnoses is wrong, or the predictive relationship between features is wrong...)"></textarea>
-                            <div class="field-evidence" id="other-feedback-ev"></div>
-                        </div>
-                    </div>
-                </div>
+                {% block right_panel %}{% endblock %}
             </div>
         </div>
         </main>
@@ -162,42 +138,6 @@ main{max-width:none;margin:0;padding:8px 12px}
 .field{margin-bottom:16px}
 .field-label{font-size:.78rem;text-transform:uppercase;letter-spacing:.05em;color:#6b7280;font-weight:600;margin-bottom:4px}
 
-.diag-list,.desc-list{display:flex;flex-direction:column;gap:0;max-height:none;overflow-y:auto;border-radius:8px;padding-bottom:32px}
-.review-row{display:flex;align-items:flex-start;gap:6px;padding:4px 10px;border:1px solid #e2e8f0;border-bottom:none;background:#f8fafc;transition:background .15s}
-.diag-list>:first-child,.desc-list>:first-child{border-radius:8px 8px 0 0}
-.diag-list>:last-child,.desc-list>:last-child{border-bottom:1px solid #e2e8f0;border-radius:0 0 8px 8px}
-.diag-list>:only-child,.desc-list>:only-child{border-radius:8px;border-bottom:1px solid #e2e8f0}
-.review-row.rev-correct{background:#f0fdf4}
-.review-row.rev-maybe{background:#fffbeb}
-.review-row.rev-incorrect{background:#fef2f2}
-.rev-num{font-weight:600;color:#6b7280;min-width:18px;flex-shrink:0;font-size:.8rem}
-.rev-text{flex:1;font-size:.85rem;line-height:1.4;color:#334155}
-.rev-actions{display:flex;gap:4px;flex-shrink:0;padding-top:1px}
-.rev-btn{width:22px;height:22px;border-radius:5px;border:1px solid #d1d5db;background:#fff;cursor:pointer;font-size:.78rem;display:flex;align-items:center;justify-content:center;transition:all .15s}
-.rev-ok{color:#059669}
-.rev-ok:hover{background:#ecfdf5;border-color:#6ee7b7}
-.rev-ok.active{background:#059669;color:#fff;border-color:#059669}
-.rev-maybe{color:#d97706}
-.rev-maybe:hover{background:#fffbeb;border-color:#fcd34d}
-.rev-maybe.active{background:#d97706;color:#fff;border-color:#d97706}
-.rev-no{color:#dc2626}
-.rev-no:hover{background:#fef2f2;border-color:#fca5a5}
-.rev-no.active{background:#dc2626;color:#fff;border-color:#dc2626}
-.rev-btn[data-tip]{position:relative}
-.rev-btn[data-tip]:hover::after{content:attr(data-tip);position:absolute;top:calc(100% + 4px);left:50%;transform:translateX(-50%);background:#1e293b;color:#fff;font-size:.65rem;padding:2px 6px;border-radius:4px;white-space:nowrap;z-index:20;pointer-events:none}
-
-.rev-correction{padding:6px 14px 8px 44px;border:1px solid #e2e8f0;border-top:none;background:#fef2f2}
-.rev-correction input{width:100%;padding:6px 10px;border:1px solid #fca5a5;border-radius:6px;font-size:.88rem;font-family:inherit;background:#fff;color:#334155}
-.rev-correction input:focus{outline:none;border-color:#dc2626;box-shadow:0 0 0 2px rgba(220,38,38,.12)}
-.rev-correction input::placeholder{color:#9ca3af}
-.rev-correction-maybe{background:#fffbeb}
-.rev-correction-maybe input{border-color:#fcd34d}
-.rev-correction-maybe input:focus{border-color:#d97706;box-shadow:0 0 0 2px rgba(217,119,6,.12)}
-
-.survey{display:flex;flex-direction:column;gap:10px}
-.survey textarea{width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:.9rem;font-family:inherit;resize:vertical;min-height:60px;line-height:1.5}
-.survey textarea:focus{outline:none;border-color:#2563eb;box-shadow:0 0 0 2px rgba(37,99,235,.15)}
-
 .field-evidence{display:flex;flex-wrap:wrap;gap:5px;margin-top:5px}
 .evidence-item{position:relative;border:1px solid #d1d5db;border-radius:4px;overflow:visible;background:#f8fafc;cursor:pointer}
 .evidence-item .ev-crop{display:block;overflow:hidden;position:relative;border-radius:3px 3px 0 0}
@@ -229,30 +169,13 @@ main{max-width:none;margin:0;padding:8px 12px}
     .left-panel{flex:none;width:100%;position:static}
     .img-container{max-height:60vh}
 }
+
+{% block interface_css %}{% endblock %}
 </style>
 
 <script>
 (function () {
-    var modelData = JSON.parse(document.getElementById('model-data').textContent);
-    var savedReview = JSON.parse(document.getElementById('saved-review-data').textContent || '{}');
-    var modelKey = '{{ model_key }}';
     var imagePath = '/media/' + '{{ case_data.image_path }}';
-
-    var diagnoses = Array.isArray(modelData.diagnoses) ? modelData.diagnoses : [];
-    var descriptions = Array.isArray(modelData.descriptions) ? modelData.descriptions : [];
-
-    var state = {
-        diagnosis_feedback: makeItemFeedback(diagnoses, (savedReview.diagnosis_feedback || [])),
-        description_feedback: makeItemFeedback(descriptions, (savedReview.description_feedback || [])),
-        other_feedback: savedReview.other_feedback || '',
-        other_feedback_crops: Array.isArray(savedReview.other_feedback_crops) ? savedReview.other_feedback_crops : [],
-        zoom: 1, panX: 0, panY: 0,
-        baseW: 0, baseH: 0,
-        cropMode: false,
-        isPanning: false,
-        panStartX: 0, panStartY: 0,
-        panOrigX: 0, panOrigY: 0
-    };
 
     var imgEl = document.getElementById('img');
     var containerEl = document.getElementById('img-container');
@@ -260,93 +183,24 @@ main{max-width:none;margin:0;padding:8px 12px}
     var cropSel = document.getElementById('crop-sel');
     var zoomLbl = document.getElementById('zoom-lbl');
     var btnCrop = document.getElementById('btn-crop');
-    var otherFeedbackEl = document.getElementById('other-feedback');
     var reviewDataInputEl = document.getElementById('review-data-input');
     var actionInputEl = document.getElementById('form-action');
 
     var cropStart = null;
     var lastFocusedInput = null;
 
-    function makeItemFeedback(items, savedItems) {
-        return (items || []).map(function (text, index) {
-            var saved = (savedItems || [])[index] || {};
-            return {
-                text: String(text || '').trim(),
-                label: saved.label || '',
-                feedback: saved.feedback || '',
-                crops: Array.isArray(saved.crops) ? saved.crops : []
-            };
-        });
-    }
+    var vs = { zoom: 1, panX: 0, panY: 0, baseW: 0, baseH: 0, cropMode: false,
+               isPanning: false, panStartX: 0, panStartY: 0, panOrigX: 0, panOrigY: 0 };
 
-    function reviewedCount() {
-        var d = state.diagnosis_feedback.filter(function (i) { return i.label; }).length;
-        var s = state.description_feedback.filter(function (i) { return i.label; }).length;
-        return d + s;
-    }
+    /* ===== Hooks — overridden by interface-specific JS ===== */
+    var syncHiddenPayload = function () {};
+    var isPageComplete = function () { return true; };
+    var render = function () {};
+    var getFieldTarget = function () { return null; };
+    var defaultFallbackField = null;
 
-    function totalCount() {
-        return state.diagnosis_feedback.length + state.description_feedback.length;
-    }
-
-    function isPageComplete() {
-        var total = totalCount();
-        if (total > 0 && reviewedCount() < total) return false;
-        var allFeedbackFilled = true;
-        state.diagnosis_feedback.concat(state.description_feedback).forEach(function (item) {
-            if (item.label === 'incorrect' && !item.feedback.trim()) allFeedbackFilled = false;
-        });
-        return allFeedbackFilled;
-    }
-
-    function syncHiddenPayload() {
-        state.other_feedback = otherFeedbackEl.value;
-        var payload = {
-            model_name: modelKey,
-            diagnosis_feedback: state.diagnosis_feedback.map(function (item) {
-                return { text: item.text, label: item.label, feedback: item.feedback, crops: item.crops || [] };
-            }),
-            description_feedback: state.description_feedback.map(function (item) {
-                return { text: item.text, label: item.label, feedback: item.feedback, crops: item.crops || [] };
-            }),
-            other_feedback: state.other_feedback,
-            other_feedback_crops: state.other_feedback_crops || [],
-            raw_state: { diagnoses: diagnoses, descriptions: descriptions }
-        };
-        reviewDataInputEl.value = JSON.stringify(payload);
-    }
-
-    /* ===== Field target helpers for crop evidence ===== */
-    function getFieldTarget(fieldEl) {
-        if (!fieldEl) return null;
-        if (fieldEl.id === 'other-feedback') {
-            return {
-                getCrops: function () { return state.other_feedback_crops; },
-                setCrops: function (c) { state.other_feedback_crops = c; },
-                updateText: function (v) { state.other_feedback = v; }
-            };
-        }
-        var kind = fieldEl.dataset.kind;
-        var index = Number(fieldEl.dataset.index);
-        if (!Number.isInteger(index)) return null;
-        var list = kind === 'diag' ? state.diagnosis_feedback : kind === 'desc' ? state.description_feedback : null;
-        if (!list || !list[index]) return null;
-        return {
-            getCrops: function () { return list[index].crops || []; },
-            setCrops: function (c) { list[index].crops = c; },
-            updateText: function (v) { list[index].feedback = v; }
-        };
-    }
-
-    function getFieldCrops(fieldEl) {
-        var t = getFieldTarget(fieldEl);
-        return t ? t.getCrops() : [];
-    }
-
-    function setFieldCrops(fieldEl, crops) {
-        var t = getFieldTarget(fieldEl);
-        if (t) t.setCrops(crops);
-    }
+    function getFieldCrops(fieldEl) { var t = getFieldTarget(fieldEl); return t ? t.getCrops() : []; }
+    function setFieldCrops(fieldEl, crops) { var t = getFieldTarget(fieldEl); if (t) t.setCrops(crops); }
 
     function findEvidenceDiv(fieldEl) {
         if (!fieldEl) return null;
@@ -445,7 +299,7 @@ main{max-width:none;margin:0;padding:8px 12px}
     }
 
     function addCropEvidence(crop) {
-        var fieldEl = lastFocusedInput || otherFeedbackEl;
+        var fieldEl = lastFocusedInput || defaultFallbackField;
         if (!fieldEl) return;
         var crops = getFieldCrops(fieldEl).concat([crop]);
         setFieldCrops(fieldEl, crops);
@@ -470,146 +324,47 @@ main{max-width:none;margin:0;padding:8px 12px}
         var dw = cw, dh = cw * (nh / nw);
         if (dh > maxH) { dh = maxH; dw = maxH * (nw / nh); }
         containerEl.style.height = dh + 'px';
-        state.baseW = dw;
-        state.baseH = dh;
+        vs.baseW = dw; vs.baseH = dh;
         updateTransform();
     }
 
     function updateTransform() {
         var cw = containerEl.clientWidth, ch = containerEl.clientHeight;
-        var cx = (cw - state.baseW * state.zoom) / 2 + state.panX;
-        var cy = (ch - state.baseH * state.zoom) / 2 + state.panY;
-        imgEl.style.width = state.baseW + 'px';
-        imgEl.style.height = state.baseH + 'px';
+        var cx = (cw - vs.baseW * vs.zoom) / 2 + vs.panX;
+        var cy = (ch - vs.baseH * vs.zoom) / 2 + vs.panY;
+        imgEl.style.width = vs.baseW + 'px';
+        imgEl.style.height = vs.baseH + 'px';
         imgEl.style.transformOrigin = '0 0';
-        imgEl.style.transform = 'translate(' + cx + 'px,' + cy + 'px) scale(' + state.zoom + ')';
-        zoomLbl.textContent = Math.round(state.zoom * 100) + '%';
+        imgEl.style.transform = 'translate(' + cx + 'px,' + cy + 'px) scale(' + vs.zoom + ')';
+        zoomLbl.textContent = Math.round(vs.zoom * 100) + '%';
     }
 
-    function resetView() {
-        state.zoom = 1; state.panX = 0; state.panY = 0;
-        updateTransform();
-    }
+    function resetView() { vs.zoom = 1; vs.panX = 0; vs.panY = 0; updateTransform(); }
 
     function zoomBy(delta, cx, cy) {
-        var oldZ = state.zoom;
-        state.zoom = Math.min(Math.max(state.zoom * (1 + delta), 0.5), 8);
+        var oldZ = vs.zoom;
+        vs.zoom = Math.min(Math.max(vs.zoom * (1 + delta), 0.5), 8);
         if (cx !== undefined) {
             var cw = containerEl.clientWidth, ch = containerEl.clientHeight;
-            var oldIx = (cw - state.baseW * oldZ) / 2 + state.panX;
-            var oldIy = (ch - state.baseH * oldZ) / 2 + state.panY;
+            var oldIx = (cw - vs.baseW * oldZ) / 2 + vs.panX;
+            var oldIy = (ch - vs.baseH * oldZ) / 2 + vs.panY;
             var ix = (cx - oldIx) / oldZ, iy = (cy - oldIy) / oldZ;
-            var newIx = (cw - state.baseW * state.zoom) / 2 + state.panX;
-            var newIy = (ch - state.baseH * state.zoom) / 2 + state.panY;
-            state.panX += cx - (newIx + ix * state.zoom);
-            state.panY += cy - (newIy + iy * state.zoom);
+            var newIx = (cw - vs.baseW * vs.zoom) / 2 + vs.panX;
+            var newIy = (ch - vs.baseH * vs.zoom) / 2 + vs.panY;
+            vs.panX += cx - (newIx + ix * vs.zoom);
+            vs.panY += cy - (newIy + iy * vs.zoom);
         }
         updateTransform();
     }
 
     function screenToImgNorm(sx, sy) {
         var cw = containerEl.clientWidth, ch = containerEl.clientHeight;
-        var imgCx = (cw - state.baseW * state.zoom) / 2 + state.panX;
-        var imgCy = (ch - state.baseH * state.zoom) / 2 + state.panY;
+        var imgCx = (cw - vs.baseW * vs.zoom) / 2 + vs.panX;
+        var imgCy = (ch - vs.baseH * vs.zoom) / 2 + vs.panY;
         return {
-            x: Math.max(0, Math.min(1, (sx - imgCx) / (state.baseW * state.zoom))),
-            y: Math.max(0, Math.min(1, (sy - imgCy) / (state.baseH * state.zoom)))
+            x: Math.max(0, Math.min(1, (sx - imgCx) / (vs.baseW * vs.zoom))),
+            y: Math.max(0, Math.min(1, (sy - imgCy) / (vs.baseH * vs.zoom)))
         };
-    }
-
-    /* ===== Review list rendering ===== */
-    function renderItemList(containerId, sectionId, items, prefix, numbered) {
-        var listEl = document.getElementById(containerId);
-        var sectionEl = document.getElementById(sectionId);
-        if (!items.length) { sectionEl.style.display = 'none'; return; }
-        sectionEl.style.display = '';
-        listEl.innerHTML = '';
-
-        items.forEach(function (item, idx) {
-            var rowDiv = document.createElement('div');
-            rowDiv.className = 'review-row';
-            if (item.label) rowDiv.classList.add('rev-' + item.label);
-
-            if (numbered) {
-                var numEl = document.createElement('span');
-                numEl.className = 'rev-num';
-                numEl.textContent = (idx + 1) + '.';
-                rowDiv.appendChild(numEl);
-            }
-
-            var textEl = document.createElement('span');
-            textEl.className = 'rev-text';
-            textEl.textContent = item.text;
-            rowDiv.appendChild(textEl);
-
-            var actions = document.createElement('div');
-            actions.className = 'rev-actions';
-
-            var clearCorrection = function () { item.feedback = ''; item.crops = []; };
-
-            var btnOk = document.createElement('button');
-            btnOk.type = 'button';
-            btnOk.className = 'rev-btn rev-ok' + (item.label === 'correct' ? ' active' : '');
-            btnOk.innerHTML = '&#x2713;';
-            btnOk.dataset.tip = 'Correct';
-            btnOk.onclick = function () {
-                item.label = item.label === 'correct' ? '' : 'correct';
-                clearCorrection();
-                syncHiddenPayload(); render();
-            };
-
-            var btnNo = document.createElement('button');
-            btnNo.type = 'button';
-            btnNo.className = 'rev-btn rev-no' + (item.label === 'incorrect' ? ' active' : '');
-            btnNo.innerHTML = '&#x2717;';
-            btnNo.dataset.tip = 'Incorrect';
-            btnNo.onclick = function () {
-                var was = item.label === 'incorrect';
-                item.label = was ? '' : 'incorrect';
-                if (was) clearCorrection();
-                syncHiddenPayload(); render();
-            };
-
-            var btnMaybe = document.createElement('button');
-            btnMaybe.type = 'button';
-            btnMaybe.className = 'rev-btn rev-maybe' + (item.label === 'maybe' ? ' active' : '');
-            btnMaybe.innerHTML = '?';
-            btnMaybe.dataset.tip = 'Maybe';
-            btnMaybe.onclick = function () {
-                var was = item.label === 'maybe';
-                item.label = was ? '' : 'maybe';
-                if (was) clearCorrection();
-                syncHiddenPayload(); render();
-            };
-
-            actions.appendChild(btnOk);
-            actions.appendChild(btnNo);
-            actions.appendChild(btnMaybe);
-            rowDiv.appendChild(actions);
-            listEl.appendChild(rowDiv);
-
-            if (item.label === 'incorrect' || item.label === 'maybe') {
-                var corrDiv = document.createElement('div');
-                corrDiv.className = 'rev-correction' + (item.label === 'maybe' ? ' rev-correction-maybe' : '');
-                var inp = document.createElement('input');
-                inp.type = 'text';
-                inp.placeholder = item.label === 'maybe' ? 'Why? (optional)' : 'Why? (required)';
-                inp.value = item.feedback || '';
-                inp.dataset.kind = prefix === 'diag' ? 'diag' : 'desc';
-                inp.dataset.index = String(idx);
-                inp.oninput = function () {
-                    item.feedback = inp.value;
-                    syncFieldCrops(inp);
-                    syncHiddenPayload();
-                };
-                corrDiv.appendChild(inp);
-                var evDiv = document.createElement('div');
-                evDiv.className = 'field-evidence';
-                corrDiv.appendChild(evDiv);
-                renderFieldEvidenceInto(evDiv, inp);
-                listEl.appendChild(corrDiv);
-            }
-        });
     }
 
     /* ===== Status flash ===== */
@@ -624,9 +379,9 @@ main{max-width:none;margin:0;padding:8px 12px}
 
     /* ===== Navigation warning ===== */
     var warnEl;
-    function showNavWarning() {
+    function showNavWarning(msg) {
         if (!warnEl) warnEl = document.getElementById('nav-warning');
-        warnEl.innerHTML = '&#x26A0;&#xFE0F; Please review all items and provide feedback for incorrect marks before continuing.';
+        warnEl.innerHTML = msg || '&#x26A0;&#xFE0F; Please complete all required fields before continuing.';
         warnEl.classList.remove('show');
         void warnEl.offsetWidth;
         warnEl.classList.add('show');
@@ -634,15 +389,6 @@ main{max-width:none;margin:0;padding:8px 12px}
     function hideNavWarning() {
         if (!warnEl) warnEl = document.getElementById('nav-warning');
         warnEl.classList.remove('show');
-    }
-
-    /* ===== Main render ===== */
-    function render() {
-        hideNavWarning();
-        renderItemList('diag-list', 'diag-section', state.diagnosis_feedback, 'diag', true);
-        renderItemList('desc-list', 'desc-section', state.description_feedback, 'desc', false);
-        renderFieldEvidenceInto(document.getElementById('other-feedback-ev'), otherFeedbackEl);
-        syncHiddenPayload();
     }
 
     /* ===== Event wiring ===== */
@@ -662,34 +408,34 @@ main{max-width:none;margin:0;padding:8px 12px}
     document.getElementById('btn-zreset').onclick = resetView;
 
     containerEl.addEventListener('mousedown', function (e) {
-        if (state.cropMode || e.button !== 0) return;
-        state.isPanning = true;
-        state.panStartX = e.clientX; state.panStartY = e.clientY;
-        state.panOrigX = state.panX; state.panOrigY = state.panY;
+        if (vs.cropMode || e.button !== 0) return;
+        vs.isPanning = true;
+        vs.panStartX = e.clientX; vs.panStartY = e.clientY;
+        vs.panOrigX = vs.panX; vs.panOrigY = vs.panY;
         containerEl.classList.add('panning');
         e.preventDefault();
     });
 
     window.addEventListener('mousemove', function (e) {
-        if (!state.isPanning) return;
-        state.panX = state.panOrigX + (e.clientX - state.panStartX);
-        state.panY = state.panOrigY + (e.clientY - state.panStartY);
+        if (!vs.isPanning) return;
+        vs.panX = vs.panOrigX + (e.clientX - vs.panStartX);
+        vs.panY = vs.panOrigY + (e.clientY - vs.panStartY);
         updateTransform();
     });
 
     window.addEventListener('mouseup', function () {
-        if (state.isPanning) { state.isPanning = false; containerEl.classList.remove('panning'); }
+        if (vs.isPanning) { vs.isPanning = false; containerEl.classList.remove('panning'); }
     });
 
     btnCrop.onclick = function () {
-        state.cropMode = !state.cropMode;
-        btnCrop.classList.toggle('active', state.cropMode);
-        cropOverlay.style.display = state.cropMode ? 'block' : 'none';
-        containerEl.classList.toggle('crop-active', state.cropMode);
+        vs.cropMode = !vs.cropMode;
+        btnCrop.classList.toggle('active', vs.cropMode);
+        cropOverlay.style.display = vs.cropMode ? 'block' : 'none';
+        containerEl.classList.toggle('crop-active', vs.cropMode);
     };
 
     cropOverlay.addEventListener('mousedown', function (e) {
-        if (!state.cropMode) return;
+        if (!vs.cropMode) return;
         e.preventDefault(); e.stopPropagation();
         var r = containerEl.getBoundingClientRect();
         cropStart = { sx: e.clientX - r.left, sy: e.clientY - r.top };
@@ -718,18 +464,10 @@ main{max-width:none;margin:0;padding:8px 12px}
         var w = Math.abs(p2.x - p1.x), h = Math.abs(p2.y - p1.y);
         if (w < 0.01 || h < 0.01) return;
         addCropEvidence({ x: x, y: y, w: w, h: h });
-        state.cropMode = false;
+        vs.cropMode = false;
         btnCrop.classList.remove('active');
         cropOverlay.style.display = 'none';
         containerEl.classList.remove('crop-active');
-    });
-
-    otherFeedbackEl.value = state.other_feedback;
-    otherFeedbackEl.addEventListener('input', function () {
-        state.other_feedback = otherFeedbackEl.value;
-        syncFieldCrops(otherFeedbackEl);
-        syncHiddenPayload();
-        renderFieldEvidenceInto(document.getElementById('other-feedback-ev'), otherFeedbackEl);
     });
 
     /* ===== Atomic [ev N] delete ===== */
@@ -802,8 +540,8 @@ main{max-width:none;margin:0;padding:8px 12px}
     /* ===== Keyboard shortcuts ===== */
     document.addEventListener('keydown', function (e) {
         if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-        if (e.key === 'Escape' && state.cropMode) {
-            state.cropMode = false;
+        if (e.key === 'Escape' && vs.cropMode) {
+            vs.cropMode = false;
             btnCrop.classList.remove('active');
             cropOverlay.style.display = 'none';
             containerEl.classList.remove('crop-active');
@@ -818,6 +556,9 @@ main{max-width:none;margin:0;padding:8px 12px}
         actionInputEl.value = 'reset_all';
         document.getElementById('annotation-form').submit();
     };
+
+    /* ===== Interface-specific JS inserted here ===== */
+    {% block interface_js %}{% endblock %}
 
     /* ===== Init ===== */
     imgEl.onload = fitImage;

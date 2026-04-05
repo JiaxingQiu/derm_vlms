@@ -1,0 +1,198 @@
+{% extends "_annotations_base.html" %}
+
+{% block json_data %}
+{{ saved_unconditional|json_script:"saved-unconditional-data" }}
+{% endblock %}
+
+{% block header_prompt %}Please examine this lesion image and provide your independent clinical assessment.{% endblock %}
+
+{% block right_panel %}
+<div class="task-sec">
+    <div class="vlm-badge uncond-badge">
+        <span class="vlm-tag">Task</span> Your Assessment
+    </div>
+    <div class="tc">
+        <div class="crop-hint uncond-crop-hint">Use Crop &#x2702; to select a region as evidence for any part of your response</div>
+
+        <div class="field">
+            <div class="field-label">Your top-3 differential diagnoses <span class="field-required">*</span></div>
+            <div class="diag-inputs">
+                <div class="diag-row"><span class="diag-num">1.</span><input type="text" id="user-diag-1" class="uncond-input" placeholder="Most likely diagnosis"><button type="button" class="btn-unknown" id="btn-unk-1">?</button><div class="field-evidence" id="user-diag-1-ev"></div></div>
+                <div class="diag-row"><span class="diag-num">2.</span><input type="text" id="user-diag-2" class="uncond-input" placeholder="Second diagnosis"><button type="button" class="btn-unknown" id="btn-unk-2">?</button><div class="field-evidence" id="user-diag-2-ev"></div></div>
+                <div class="diag-row"><span class="diag-num">3.</span><input type="text" id="user-diag-3" class="uncond-input" placeholder="Third diagnosis"><button type="button" class="btn-unknown" id="btn-unk-3">?</button><div class="field-evidence" id="user-diag-3-ev"></div></div>
+            </div>
+        </div>
+
+        <div class="field">
+            <div class="field-label">Your reasons <span class="field-required">*</span></div>
+            <textarea id="user-reasons" class="uncond-textarea" rows="6" placeholder="Describe the clinical features and reasoning that support your differential diagnoses..."></textarea>
+            <div class="field-evidence" id="user-reasons-ev"></div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block interface_css %}
+.uncond-badge{background:linear-gradient(135deg,#ecfdf5,#d1fae5)!important;border-bottom:2px solid #6ee7b7!important;color:#065f46!important}
+.uncond-crop-hint{color:#065f46!important}
+.field-required{color:#dc2626;font-weight:700;font-size:.85rem}
+.diag-inputs{display:flex;flex-direction:column;gap:8px}
+.diag-row{display:flex;align-items:flex-start;gap:6px;flex-wrap:wrap}
+.diag-num{font-weight:600;color:#6b7280;min-width:20px;padding-top:8px;font-size:.9rem}
+.uncond-input{flex:1;padding:8px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:.9rem;font-family:inherit;line-height:1.4}
+.uncond-input:focus{outline:none;border-color:#059669;box-shadow:0 0 0 2px rgba(5,150,105,.15)}
+.uncond-input.field-error{border-color:#dc2626;box-shadow:0 0 0 2px rgba(220,38,38,.12)}
+.uncond-input.is-unknown{background:#f3f4f6;color:#9ca3af;border-color:#e5e7eb}
+.btn-unknown{flex-shrink:0;padding:6px 10px;border:1px solid #d1d5db;border-radius:8px;background:#fff;color:#9ca3af;font-size:.72rem;font-weight:600;cursor:pointer;transition:all .15s;line-height:1;margin-top:1px}
+.btn-unknown:hover{background:#f3f4f6;border-color:#9ca3af}
+.btn-unknown.active{background:#6b7280;color:#fff;border-color:#6b7280}
+.diag-row .field-evidence{width:100%;padding-left:26px}
+.uncond-textarea{width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:.9rem;font-family:inherit;resize:vertical;min-height:80px;line-height:1.6}
+.uncond-textarea:focus{outline:none;border-color:#059669;box-shadow:0 0 0 2px rgba(5,150,105,.15)}
+.uncond-textarea.field-error{border-color:#dc2626;box-shadow:0 0 0 2px rgba(220,38,38,.12)}
+{% endblock %}
+
+{% block interface_js %}
+    var saved = JSON.parse(document.getElementById('saved-unconditional-data').textContent || '{}');
+    var savedDiags = Array.isArray(saved.user_diagnoses) ? saved.user_diagnoses : ['', '', ''];
+    var savedDiagCrops = Array.isArray(saved.user_diagnoses_crops) ? saved.user_diagnoses_crops : [[], [], []];
+
+    var diagEls = [
+        document.getElementById('user-diag-1'),
+        document.getElementById('user-diag-2'),
+        document.getElementById('user-diag-3')
+    ];
+    var unkBtns = [
+        document.getElementById('btn-unk-1'),
+        document.getElementById('btn-unk-2'),
+        document.getElementById('btn-unk-3')
+    ];
+    var UNKNOWN = 'Unknown';
+    var reasonsEl = document.getElementById('user-reasons');
+    defaultFallbackField = diagEls[0];
+
+    var state = {
+        user_diagnoses: [savedDiags[0] || '', savedDiags[1] || '', savedDiags[2] || ''],
+        user_diagnoses_crops: [
+            Array.isArray(savedDiagCrops[0]) ? savedDiagCrops[0] : [],
+            Array.isArray(savedDiagCrops[1]) ? savedDiagCrops[1] : [],
+            Array.isArray(savedDiagCrops[2]) ? savedDiagCrops[2] : []
+        ],
+        user_reasons: saved.user_reasons || '',
+        user_reasons_crops: Array.isArray(saved.user_reasons_crops) ? saved.user_reasons_crops : []
+    };
+
+    function diagIndex(fieldEl) {
+        for (var i = 0; i < diagEls.length; i++) {
+            if (fieldEl === diagEls[i]) return i;
+        }
+        return -1;
+    }
+
+    function isUnknown(i) { return state.user_diagnoses[i] === UNKNOWN; }
+
+    function toggleUnknown(i) {
+        var el = diagEls[i], btn = unkBtns[i];
+        if (isUnknown(i)) {
+            state.user_diagnoses[i] = '';
+            el.value = '';
+            el.disabled = false;
+            el.classList.remove('is-unknown');
+            btn.classList.remove('active');
+            state.user_diagnoses_crops[i] = [];
+        } else {
+            state.user_diagnoses[i] = UNKNOWN;
+            el.value = UNKNOWN;
+            el.disabled = true;
+            el.classList.add('is-unknown');
+            el.classList.remove('field-error');
+            btn.classList.add('active');
+            state.user_diagnoses_crops[i] = [];
+        }
+        syncHiddenPayload();
+        renderFieldEvidenceInto(document.getElementById('user-diag-' + (i + 1) + '-ev'), el);
+    }
+
+    function applyUnknownVisual(i) {
+        var el = diagEls[i], btn = unkBtns[i];
+        if (isUnknown(i)) {
+            el.disabled = true;
+            el.classList.add('is-unknown');
+            btn.classList.add('active');
+        }
+    }
+
+    getFieldTarget = function (fieldEl) {
+        if (!fieldEl) return null;
+        var di = diagIndex(fieldEl);
+        if (di >= 0) {
+            return {
+                getCrops: function () { return state.user_diagnoses_crops[di]; },
+                setCrops: function (c) { state.user_diagnoses_crops[di] = c; },
+                updateText: function (v) { state.user_diagnoses[di] = v; }
+            };
+        }
+        if (fieldEl.id === 'user-reasons') {
+            return {
+                getCrops: function () { return state.user_reasons_crops; },
+                setCrops: function (c) { state.user_reasons_crops = c; },
+                updateText: function (v) { state.user_reasons = v; }
+            };
+        }
+        return null;
+    };
+
+    syncHiddenPayload = function () {
+        for (var i = 0; i < diagEls.length; i++) state.user_diagnoses[i] = diagEls[i].value;
+        state.user_reasons = reasonsEl.value;
+        reviewDataInputEl.value = JSON.stringify({
+            interface_type: 'unconditional',
+            user_diagnoses: state.user_diagnoses,
+            user_diagnoses_crops: state.user_diagnoses_crops,
+            user_reasons: state.user_reasons,
+            user_reasons_crops: state.user_reasons_crops
+        });
+    };
+
+    isPageComplete = function () {
+        var ok = true;
+        diagEls.forEach(function (el) {
+            el.classList.remove('field-error');
+            if (!el.value.trim()) { el.classList.add('field-error'); ok = false; }
+        });
+        reasonsEl.classList.remove('field-error');
+        if (!reasonsEl.value.trim()) { reasonsEl.classList.add('field-error'); ok = false; }
+        return ok;
+    };
+
+    render = function () {
+        hideNavWarning();
+        diagEls.forEach(function (el, i) {
+            renderFieldEvidenceInto(document.getElementById('user-diag-' + (i + 1) + '-ev'), el);
+        });
+        renderFieldEvidenceInto(document.getElementById('user-reasons-ev'), reasonsEl);
+        syncHiddenPayload();
+    };
+
+    diagEls.forEach(function (el, i) {
+        el.value = state.user_diagnoses[i];
+        applyUnknownVisual(i);
+        el.addEventListener('input', function () {
+            el.classList.remove('field-error');
+            state.user_diagnoses[i] = el.value;
+            syncFieldCrops(el);
+            syncHiddenPayload();
+            renderFieldEvidenceInto(document.getElementById('user-diag-' + (i + 1) + '-ev'), el);
+        });
+        unkBtns[i].addEventListener('click', function () { toggleUnknown(i); });
+    });
+
+    reasonsEl.value = state.user_reasons;
+    reasonsEl.addEventListener('input', function () {
+        reasonsEl.classList.remove('field-error');
+        state.user_reasons = reasonsEl.value;
+        syncFieldCrops(reasonsEl);
+        syncHiddenPayload();
+        renderFieldEvidenceInto(document.getElementById('user-reasons-ev'), reasonsEl);
+    });
+{% endblock %}

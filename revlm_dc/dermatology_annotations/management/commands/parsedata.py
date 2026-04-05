@@ -1,13 +1,17 @@
 """Django management command to convert prediction CSVs into the
 annotations_data.json consumed by the dermatology review interface.
 
+Includes all standard image modes (photo, dscope, combined) per lesion.
+The ``virtual`` mode is excluded by default (use --include-virtual to add it).
+
 Usage:
     cd /scratch/jq2uw/derm_vlms/revlm_dc
     python manage.py parsedata
+    python manage.py parsedata --modes photo dscope combined
+    python manage.py parsedata --include-virtual
 """
 
 import json
-import os
 import shutil
 from pathlib import Path
 
@@ -25,11 +29,32 @@ VLMS = {
     "DermatoLlama": "results/dermato_llama_predictions_all.csv",
 }
 
+STANDARD_MODES = {"photo", "dscope", "combined"}
+
 
 class Command(BaseCommand):
     help = "Parse prediction CSVs into annotations_data.json and copy images."
 
+    def add_arguments(self, parser):
+        parser.add_argument(
+            "--modes",
+            nargs="+",
+            default=list(STANDARD_MODES),
+            help="Image modes to include (default: photo dscope combined).",
+        )
+        parser.add_argument(
+            "--include-virtual",
+            action="store_true",
+            default=False,
+            help="Also include the 'virtual' image mode.",
+        )
+
     def handle(self, *args, **options):
+        allowed_modes = set(options["modes"])
+        if options["include_virtual"]:
+            allowed_modes.add("virtual")
+        self.stdout.write(f"Including image modes: {sorted(allowed_modes)}")
+
         data_dir = Path(settings.BASE_DIR) / "data"
         image_dst = Path(settings.MEDIA_ROOT)
         image_src = PROJECT_ROOT / "results" / "images"
@@ -37,32 +62,34 @@ class Command(BaseCommand):
         data_dir.mkdir(parents=True, exist_ok=True)
         image_dst.mkdir(parents=True, exist_ok=True)
 
-        # -- Load CSVs, keep only combined images --
         vlm_frames = {}
         for name, rel_path in VLMS.items():
             csv_path = PROJECT_ROOT / rel_path
             if not csv_path.exists():
                 self.stdout.write(self.style.WARNING(
-                    f"[SKIP] {name}: {csv_path} not found (predictions may still be running)"
+                    f"[SKIP] {name}: {csv_path} not found"
                 ))
                 continue
             df = pd.read_csv(csv_path)
-            df = df[df["id"].str.endswith("_combined")]
+            df = df[df["image_mode"].isin(allowed_modes)]
             if df.empty:
-                self.stdout.write(self.style.WARNING(f"[SKIP] {name}: no combined rows"))
+                self.stdout.write(self.style.WARNING(
+                    f"[SKIP] {name}: no rows for modes {sorted(allowed_modes)}"
+                ))
                 continue
             vlm_frames[name] = df.set_index("id")
-            self.stdout.write(f"  {name}: {len(df)} combined cases loaded")
+            per_mode = df["image_mode"].value_counts().to_dict()
+            self.stdout.write(f"  {name}: {len(df)} rows  {per_mode}")
 
         if not vlm_frames:
             self.stdout.write(self.style.ERROR("No prediction data found. Aborting."))
             return
 
-        # -- Collect all combined case IDs across models --
         all_ids = sorted(set().union(*(df.index for df in vlm_frames.values())))
-        self.stdout.write(f"\n{len(all_ids)} unique combined cases across {len(vlm_frames)} models")
+        self.stdout.write(
+            f"\n{len(all_ids)} unique case IDs across {len(vlm_frames)} models"
+        )
 
-        # -- Build annotations_data.json --
         annotations = {}
         parse_stats = {name: {"matched": 0, "missed": 0} for name in vlm_frames}
 
@@ -92,9 +119,10 @@ class Command(BaseCommand):
         out_path = data_dir / "annotations_data.json"
         with open(out_path, "w", encoding="utf-8") as f:
             json.dump(annotations, f, indent=2, ensure_ascii=False)
-        self.stdout.write(self.style.SUCCESS(f"\nWrote {out_path} ({len(annotations)} cases)"))
+        self.stdout.write(self.style.SUCCESS(
+            f"\nWrote {out_path} ({len(annotations)} cases)"
+        ))
 
-        # -- Parse statistics --
         self.stdout.write("\nParse statistics:")
         for name, stats in parse_stats.items():
             total = stats["matched"] + stats["missed"]
@@ -103,17 +131,6 @@ class Command(BaseCommand):
                 f"  missed: {stats['missed']}"
             )
 
-        # -- Placeholder users.json if missing --
-        users_path = data_dir / "users.json"
-        if not users_path.exists():
-            placeholder = {"users": {"admin": list(all_ids)}}
-            with open(users_path, "w", encoding="utf-8") as f:
-                json.dump(placeholder, f, indent=2)
-            self.stdout.write(self.style.SUCCESS(f"Wrote placeholder {users_path}"))
-        else:
-            self.stdout.write(f"users.json already exists, skipping ({users_path})")
-
-        # -- Copy combined images --
         copied = 0
         skipped = 0
         for case_id in all_ids:
@@ -130,4 +147,6 @@ class Command(BaseCommand):
             f"\nCopied {copied} images to {image_dst}"
             + (f" ({skipped} missing)" if skipped else "")
         ))
-        self.stdout.write(self.style.SUCCESS("\nDone. Ready to run: python manage.py runserver"))
+        self.stdout.write(self.style.SUCCESS(
+            "\nDone. Run: python manage.py generate_assignments"
+        ))

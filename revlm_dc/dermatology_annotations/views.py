@@ -9,16 +9,37 @@ from django.shortcuts import get_object_or_404, redirect, render
 from .models import Annotation, Dermatologist
 
 
-def load_valid_users():
+def load_users_config():
     json_path = Path(settings.BASE_DIR) / "data" / "users.json"
     with open(json_path, "r", encoding="utf-8") as f:
-        return json.load(f)["users"]
+        return json.load(f)
+
+
+def load_valid_users():
+    return load_users_config()["users"]
 
 
 def load_annotations_data():
     json_path = Path(settings.BASE_DIR) / "data" / "annotations_data.json"
     with open(json_path, "r", encoding="utf-8") as f:
         return json.load(f)
+
+
+def get_user_case_ids(users_config, login_id):
+    """Return the ordered list of case_ids assigned to this user."""
+    user_data = users_config["users"].get(login_id, {})
+    assignments = user_data.get("assignments", [])
+    return [a["case_id"] for a in assignments]
+
+
+def get_case_interface_map(users_config, login_id):
+    """Return {case_id: interface_type} for this user's assignments."""
+    user_data = users_config["users"].get(login_id, {})
+    assignments = user_data.get("assignments", [])
+    return {
+        a["case_id"]: a.get("conditions", {}).get("interface_type", "conditional")
+        for a in assignments
+    }
 
 
 def get_case_model_data(case_data):
@@ -224,6 +245,42 @@ def update_annotation_from_frontend(annotation, payload):
     annotation.visual_feedback = summarize_visual_feedback(active_review)
 
 
+def update_annotation_unconditional(annotation, payload):
+    existing = annotation.review_data or {}
+    default_diags = existing.get("user_diagnoses", ["", "", ""])
+    default_diag_crops = existing.get("user_diagnoses_crops", [[], [], []])
+
+    review_data = {
+        "interface_type": "unconditional",
+        "user_diagnoses": payload.get("user_diagnoses", default_diags),
+        "user_diagnoses_crops": payload.get("user_diagnoses_crops", default_diag_crops),
+        "user_reasons": payload.get(
+            "user_reasons", existing.get("user_reasons", "")
+        ),
+        "user_reasons_crops": payload.get(
+            "user_reasons_crops", existing.get("user_reasons_crops", [])
+        ),
+    }
+    annotation.review_data = review_data
+
+    parts = []
+    diags = review_data["user_diagnoses"]
+    if isinstance(diags, list):
+        for i, d in enumerate(diags, 1):
+            if d.strip():
+                parts.append(f"{i}. {d.strip()}")
+    reasons = review_data["user_reasons"].strip()
+    if reasons:
+        parts.append(f"Reasons: {reasons}")
+    annotation.textual_feedback = "\n".join(parts) if parts else ""
+
+    visual = {}
+    for key in ("user_diagnoses_crops", "user_reasons_crops"):
+        if review_data.get(key):
+            visual[key] = review_data[key]
+    annotation.visual_feedback = json.dumps(visual) if visual else ""
+
+
 def apply_legacy_form_payload(annotation, request):
     annotation.model_response_correct = request.POST.get("model_response_correct") == "on"
     annotation.textual_feedback = request.POST.get("textual_feedback", "").strip()
@@ -251,18 +308,32 @@ def get_model_keys(case_data):
     return [k for k in case_data if k != "image_path" and isinstance(case_data[k], dict)]
 
 
-def build_page_sequence(case_ids, annotations_data):
+def build_page_sequence(case_ids, annotations_data, interface_map=None):
     pages = []
     for case_id in case_ids:
-        case_data = annotations_data.get(case_id, {})
-        model_keys = get_model_keys(case_data)
-        for model_key in model_keys:
-            pages.append((case_id, model_key))
+        iface = (interface_map or {}).get(case_id, "conditional")
+        if iface == "unconditional":
+            pages.append((case_id, None))
+        else:
+            case_data = annotations_data.get(case_id, {})
+            model_keys = get_model_keys(case_data)
+            for model_key in model_keys:
+                pages.append((case_id, model_key))
     return pages
 
 
 def is_page_complete(review_data, model_key, case_data):
-    model_review = (review_data or {}).get("models", {}).get(model_key, {})
+    review_data = review_data or {}
+
+    if model_key is None:
+        diags = review_data.get("user_diagnoses", [])
+        all_diags = isinstance(diags, list) and all(
+            d.strip() for d in diags
+        ) and len(diags) >= 3
+        has_reasons = bool((review_data.get("user_reasons") or "").strip())
+        return all_diags and has_reasons
+
+    model_review = review_data.get("models", {}).get(model_key, {})
     source = case_data.get(model_key, {})
     total = len(source.get("diagnoses", [])) + len(source.get("descriptions", []))
     if total == 0:
@@ -298,23 +369,35 @@ def annotations_view(request):
         return redirect("login")
 
     annotations_data = load_annotations_data()
+    users_config = load_users_config()
     dermatologist = get_object_or_404(Dermatologist, login_id=login_id)
-    def natural_key(s):
-        return [int(c) if c.isdigit() else c.lower() for c in re.split(r'(\d+)', s)]
 
-    case_ids = sorted(annotations_data.keys(), key=natural_key)
+    user_case_ids = get_user_case_ids(users_config, login_id)
+
+    if user_case_ids:
+        case_ids = [cid for cid in user_case_ids if cid in annotations_data]
+    else:
+        def natural_key(s):
+            return [int(c) if c.isdigit() else c.lower() for c in re.split(r'(\d+)', s)]
+        case_ids = sorted(annotations_data.keys(), key=natural_key)
+
+    TEMPLATE_MAP = {
+        "conditional": "annotations_conditional.html",
+        "unconditional": "annotations_unconditional.html",
+    }
 
     if not case_ids:
         return render(
             request,
-            "annotations.html",
+            "annotations_conditional.html",
             {
                 "login_id": login_id,
                 "no_cases": True,
             },
         )
 
-    pages = build_page_sequence(case_ids, annotations_data)
+    interface_map = get_case_interface_map(users_config, login_id)
+    pages = build_page_sequence(case_ids, annotations_data, interface_map)
     total_pages = len(pages)
 
     is_nav_redirect = request.method == "GET" and request.GET.get("nav") == "1"
@@ -347,8 +430,11 @@ def annotations_view(request):
                 flat_index = total_pages - 1
                 case_id, model_key = pages[flat_index]
                 ci = case_ids.index(case_id)
-                case_data = annotations_data[case_id]
-                mi = get_model_keys(case_data).index(model_key)
+                if model_key is None:
+                    mi = 0
+                else:
+                    case_data = annotations_data[case_id]
+                    mi = get_model_keys(case_data).index(model_key)
                 dermatologist.current_case_index = ci
                 dermatologist.current_model_index = mi
                 dermatologist.save()
@@ -356,7 +442,7 @@ def annotations_view(request):
 
         return render(
             request,
-            "annotations.html",
+            "annotations_conditional.html",
             {
                 "login_id": login_id,
                 "show_done_confirmation": True,
@@ -369,7 +455,12 @@ def annotations_view(request):
     flat_index = min(flat_index, total_pages - 1)
     current_case_id, current_model_key = pages[flat_index]
     current_case_data = annotations_data[current_case_id]
-    current_model_data = current_case_data[current_model_key]
+    current_interface = interface_map.get(current_case_id, "conditional")
+
+    if current_model_key is not None:
+        current_model_data = current_case_data.get(current_model_key, {})
+    else:
+        current_model_data = {}
 
     annotation, _ = Annotation.objects.get_or_create(
         dermatologist=dermatologist,
@@ -388,19 +479,22 @@ def annotations_view(request):
             dermatologist.save()
             return redirect("annotations")
 
-        payload["model_name"] = current_model_key
-        if (
-            is_json_request(request)
-            or isinstance(payload.get("models"), dict)
-            or payload.get("active_model")
-            or payload.get("model_name")
-            or payload.get("diagnosis_feedback")
-            or payload.get("description_feedback")
-            or payload.get("other_feedback") is not None
-        ):
-            update_annotation_from_frontend(annotation, payload)
+        if current_interface == "unconditional":
+            update_annotation_unconditional(annotation, payload)
         else:
-            apply_legacy_form_payload(annotation, request)
+            payload["model_name"] = current_model_key
+            if (
+                is_json_request(request)
+                or isinstance(payload.get("models"), dict)
+                or payload.get("active_model")
+                or payload.get("model_name")
+                or payload.get("diagnosis_feedback")
+                or payload.get("description_feedback")
+                or payload.get("other_feedback") is not None
+            ):
+                update_annotation_from_frontend(annotation, payload)
+            else:
+                apply_legacy_form_payload(annotation, request)
 
         annotation.save()
 
@@ -418,7 +512,10 @@ def annotations_view(request):
         else:
             nav_case_id, nav_model_key = pages[new_flat]
             nav_ci = case_ids.index(nav_case_id)
-            nav_mi = get_model_keys(annotations_data[nav_case_id]).index(nav_model_key)
+            if nav_model_key is None:
+                nav_mi = 0
+            else:
+                nav_mi = get_model_keys(annotations_data[nav_case_id]).index(nav_model_key)
             dermatologist.current_case_index = nav_ci
             dermatologist.current_model_index = nav_mi
 
@@ -439,7 +536,16 @@ def annotations_view(request):
 
         return redirect("/annotations/?nav=1")
 
-    saved_model_review = (annotation.review_data or {}).get("models", {}).get(current_model_key, {})
+    if current_interface == "unconditional":
+        saved_unconditional = annotation.review_data or {}
+        saved_model_review = {}
+    else:
+        saved_unconditional = {}
+        saved_model_review = (
+            (annotation.review_data or {}).get("models", {}).get(current_model_key, {})
+        )
+
+    template = TEMPLATE_MAP.get(current_interface, "annotations_conditional.html")
 
     context = {
         "login_id": login_id,
@@ -447,15 +553,17 @@ def annotations_view(request):
         "case_data": current_case_data,
         "model_key": current_model_key,
         "model_data": current_model_data,
+        "interface_type": current_interface,
         "annotation": annotation,
         "saved_model_review": saved_model_review,
+        "saved_unconditional": saved_unconditional,
         "current_page": flat_index,
         "total_pages": total_pages,
         "has_previous": flat_index > 0,
         "has_next": flat_index < total_pages - 1,
     }
 
-    return render(request, "annotations.html", context)
+    return render(request, template, context)
 
 
 def thank_you_view(request):

@@ -2,6 +2,39 @@
 
 Benchmarking dermatology vision-language models on the MIDAS dataset for skin lesion classification (malignant / benign / other).
 
+## Annotation interface (Django)
+
+**Get the `results/` folder** (by request) and place it under the project root:
+```
+  derm_vl
+  ms/results/
+  ├── images/                                # lesion images
+  ├── dermato_llama_predictions_all.csv
+  ├── medgemma_predictions_all.csv
+  └── gpt53_predictions_all.csv
+```
+**First-time setup:** database, parse predictions, RCT assignments, then the dev server.
+
+```bash
+cd revlm_dc
+python manage.py makemigrations
+python manage.py migrate
+python manage.py parsedata
+python manage.py generate_assignments --users user_a user_b --seed 42 --max-lesions 3 --enable-factors image_mode interface_type
+python manage.py runserver
+```
+
+**After new predictions arrive:** re-parse, regenerate assignments, then run the server.
+
+```bash
+cd revlm_dc
+python manage.py parsedata
+python manage.py generate_assignments --users user_a user_b --seed 42 --max-lesions 3 --enable-factors image_mode interface_type
+python manage.py runserver
+```
+
+`parsedata` reads `results/*_predictions_all.csv`, parses VLM responses into diagnoses + descriptions, writes `revlm_dc/data/annotations_data.json`, and copies combined images to `revlm_dc/images/`. `generate_assignments` builds per-user lesion queues; adjust `--users`, `--max-lesions`, and `--enable-factors` as needed.
+
 ## Interface Engineering (local)
 
 Generate a self-contained HTML interface for expert review of VLM outputs.
@@ -10,9 +43,9 @@ Generate a self-contained HTML interface for expert review of VLM outputs.
   ```
    derm_vlms/results/
    ├── images/                                # Sampled lesion images
-   ├── dermato_llama_predictions_paired.csv
-   ├── medgemma_predictions_paired.csv
-   └── gpt53_predictions_paired.csv
+   ├── dermato_llama_predictions_all.csv
+   ├── medgemma_predictions_all.csv
+   └── gpt53_predictions_all.csv
   ```
 2. **Run the notebook** `res_eng/interface/notebook.ipynb`
 3. **Output** is saved to `results/interface_share/`:
@@ -23,21 +56,6 @@ Generate a self-contained HTML interface for expert review of VLM outputs.
   ```
 
 The `interface_share/` folder is ready to zip and hand off for database integration and online deployment.
-
-## Annotation Interface (Django)
-
-Expert review interface for VLM outputs. Requires prediction CSVs in `results/`.
-
-```bash
-conda activate dermato_llama
-cd revlm_dc
-python manage.py makemigrations   # first time only
-python manage.py migrate           # first time only
-python manage.py parsedata         # CSV → annotations JSON + copy images
-python manage.py runserver
-```
-
-`parsedata` reads `results/*_predictions_all.csv`, parses VLM responses into diagnoses + descriptions, writes `revlm_dc/data/annotations_data.json`, and copies combined images to `revlm_dc/images/`. Re-run after new predictions arrive.
 
 ---
 

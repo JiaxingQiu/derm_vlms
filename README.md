@@ -2,6 +2,24 @@
 
 Benchmarking dermatology vision-language models on the MIDAS dataset for skin lesion classification (malignant / benign / other).
 
+## Store annotations data
+
+In case you need to store the annotations, run the following command
+
+```python
+python upload_to_blob.py configs/blob_config.yaml
+```
+
+The config has the following parameters that should be updated accordingly
+
+```yaml
+upload:
+  source_dir: "/absolute/path/to/local/source"
+  container_name: "your-container-name"
+  blob_prefix: "datasets/revlm_dc"
+  overwrite: false
+```
+
 ## Annotation interface (Django)
 
 **Get the `results/` folder** (by request) and place it under the project root:
@@ -13,6 +31,23 @@ Benchmarking dermatology vision-language models on the MIDAS dataset for skin le
   ├── medgemma_predictions_all.csv
   └── gpt53_predictions_all.csv
 ```
+
+You can download the data from our container (by request) using the following command
+
+```python
+python download_from_blob.py configs/blob_config.yaml
+```
+
+The script will take care of storing every file into their respective subfolder based on the following configuration
+
+```yaml
+download:
+  container_name: "your-container-name"
+  blob_prefix: "datasets/revlm_dc"
+  target_dir: "/absolute/path/to/local/download"
+  overwrite: false
+```
+
 **First-time setup:** database, parse predictions, RCT assignments, then the dev server.
 
 ```bash
@@ -20,8 +55,21 @@ cd revlm_dc
 python manage.py makemigrations
 python manage.py migrate
 python manage.py parsedata
-python manage.py generate_assignments --users user_a user_b --seed 42 --max-lesions 3 --enable-factors image_mode interface_type
+python manage.py generate_assignments configs/test_config.yam
 python manage.py runserver
+```
+
+The config parameters from annotations has the following content (update accordingly)
+
+```yaml
+users:
+  - user_a
+  - user_b
+seed: 42
+max_lesions: 3
+enable_factors:
+  - image_mode
+  - interface_type
 ```
 
 **After new predictions arrive:** re-parse, regenerate assignments, then run the server.
@@ -29,7 +77,7 @@ python manage.py runserver
 ```bash
 cd revlm_dc
 python manage.py parsedata
-python manage.py generate_assignments --users user_a user_b --seed 42 --max-lesions 3 --enable-factors image_mode interface_type
+python manage.py generate_assignments configs/test_config.yam
 python manage.py runserver
 ```
 

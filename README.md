@@ -33,6 +33,13 @@ python manage.py generate_assignments --users user_a user_b --seed 42 --max-lesi
 python manage.py runserver
 ```
 
+**Just run the interface**, no new results or user, run the server.
+
+```bash
+cd revlm_dc
+python manage.py runserver
+```
+
 `parsedata` reads `results/*_predictions_all.csv`, parses VLM responses into diagnoses + descriptions, writes `revlm_dc/data/annotations_data.json`, and copies combined images to `revlm_dc/images/`. `generate_assignments` builds per-user lesion queues; adjust `--users`, `--max-lesions`, and `--enable-factors` as needed.
 
 ## Interface Engineering (local)

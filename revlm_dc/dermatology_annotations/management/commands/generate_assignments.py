@@ -5,6 +5,7 @@ a Latin-square rotation.  Multiple RCT factors are supported; each
 factor is rotated independently so that factors remain orthogonal.
 
 Usage:
+    python manage.py generate_assignments assignments.yaml
     python manage.py generate_assignments --users user_a user_b user_c
     python manage.py generate_assignments --users user_a user_b --seed 42 --max-lesions 50
     python manage.py generate_assignments --users user_a user_b \
@@ -21,7 +22,7 @@ from collections import defaultdict
 from pathlib import Path
 
 from django.conf import settings
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 
 FACTORS = {
     "image_mode": {
@@ -56,36 +57,122 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument(
+            "config",
+            nargs="?",
+            help="Path to a YAML config file containing users and command options.",
+        )
+        parser.add_argument(
             "--users",
             nargs="+",
-            required=True,
             help="Login IDs of users to include in the study.",
         )
         parser.add_argument(
             "--seed",
             type=int,
-            default=42,
             help="Global random seed for reproducibility (default: 42).",
         )
         parser.add_argument(
             "--max-lesions",
             type=int,
-            default=None,
             help="Max lesions per user (default: all eligible lesions).",
         )
         parser.add_argument(
             "--enable-factors",
             nargs="+",
-            default=["image_mode"],
             choices=list(FACTORS.keys()),
             help="Which RCT factors to randomize (default: image_mode).",
         )
 
+    def _load_yaml_config(self, config_path):
+        try:
+            import yaml
+        except ImportError as exc:
+            raise CommandError(
+                "YAML config support requires PyYAML. Install it or use CLI flags."
+            ) from exc
+
+        path = Path(config_path)
+        if not path.is_absolute():
+            path = Path.cwd() / path
+        if not path.exists():
+            raise CommandError(f"Config file not found: {path}")
+
+        with open(path, "r", encoding="utf-8") as f:
+            data = yaml.safe_load(f) or {}
+
+        if not isinstance(data, dict):
+            raise CommandError("Config file must contain a YAML mapping at the top level.")
+
+        allowed_keys = {"users", "seed", "max_lesions", "enable_factors"}
+        alias_keys = {
+            "max-lesions": "max_lesions",
+            "enable-factors": "enable_factors",
+        }
+        normalized = {}
+        for key, value in data.items():
+            normalized_key = alias_keys.get(key, key)
+            if normalized_key not in allowed_keys:
+                raise CommandError(
+                    f"Unsupported config key '{key}'. Allowed keys: {sorted(allowed_keys)}"
+                )
+            normalized[normalized_key] = value
+
+        return path, normalized
+
+    def _resolve_options(self, options):
+        config_data = {}
+        config_path = options.get("config")
+        if config_path:
+            resolved_path, config_data = self._load_yaml_config(config_path)
+            self.stdout.write(f"Loading assignment config from {resolved_path}")
+
+        resolved = {
+            "users": options.get("users") if options.get("users") is not None else config_data.get("users"),
+            "seed": options.get("seed") if options.get("seed") is not None else config_data.get("seed", 42),
+            "max_lesions": (
+                options.get("max_lesions")
+                if options.get("max_lesions") is not None
+                else config_data.get("max_lesions")
+            ),
+            "enable_factors": (
+                options.get("enable_factors")
+                if options.get("enable_factors") is not None
+                else config_data.get("enable_factors", ["image_mode"])
+            ),
+        }
+
+        if not resolved["users"]:
+            raise CommandError(
+                "No users provided. Pass --users or define 'users' in the YAML config."
+            )
+        if not isinstance(resolved["users"], list) or not all(
+            isinstance(user, str) and user for user in resolved["users"]
+        ):
+            raise CommandError("'users' must be a non-empty list of user IDs.")
+        if not isinstance(resolved["seed"], int):
+            raise CommandError("'seed' must be an integer.")
+        if resolved["max_lesions"] is not None and (
+            not isinstance(resolved["max_lesions"], int) or resolved["max_lesions"] <= 0
+        ):
+            raise CommandError("'max_lesions' must be a positive integer or null.")
+        if not isinstance(resolved["enable_factors"], list) or not resolved["enable_factors"]:
+            raise CommandError("'enable_factors' must be a non-empty list.")
+
+        invalid_factors = sorted(set(resolved["enable_factors"]) - set(FACTORS.keys()))
+        if invalid_factors:
+            raise CommandError(
+                f"Unknown factors in enable_factors: {invalid_factors}. "
+                f"Allowed: {sorted(FACTORS.keys())}"
+            )
+
+        return resolved
+
     def handle(self, *args, **options):
-        seed = options["seed"]
-        user_ids = options["users"]
-        max_lesions = options["max_lesions"]
-        enabled_factors = set(options["enable_factors"])
+        resolved_options = self._resolve_options(options)
+        seed = resolved_options["seed"]
+        user_ids = resolved_options["users"]
+        max_lesions = resolved_options["max_lesions"]
+        enabled_factors = set(resolved_options["enable_factors"])
 
         data_dir = Path(settings.BASE_DIR) / "data"
         annotations_path = data_dir / "annotations_data.json"

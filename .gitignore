@@ -1,7 +1,10 @@
 # Data (large / private)
+archive/
 data/
 data_share/
 results/
+data.zip
+images.zip
 
 # Model weights & checkpoints
 *.pth

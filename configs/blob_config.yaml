@@ -1,0 +1,16 @@
+azure:
+  connection_string: "DefaultEndpointsProtocol=https;AccountName=YOUR_ACCOUNT_NAME;AccountKey=YOUR_ACCOUNT_KEY;EndpointSuffix=core.windows.net"
+  account_url: null
+  credential: null
+
+upload:
+  source_dir: "/absolute/path/to/local/source"
+  container_name: "your-container-name"
+  blob_prefix: "datasets/revlm_dc"
+  overwrite: false
+
+download:
+  container_name: "your-container-name"
+  blob_prefix: "datasets/revlm_dc"
+  target_dir: "/absolute/path/to/local/download"
+  overwrite: false

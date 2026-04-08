@@ -1,16 +1,15 @@
 azure:
-  connection_string: "DefaultEndpointsProtocol=https;AccountName=YOUR_ACCOUNT_NAME;AccountKey=YOUR_ACCOUNT_KEY;EndpointSuffix=core.windows.net"
-  account_url: null
-  credential: null
+  sas_url: ""
+  sas_token: ""
 
 upload:
-  source_dir: "/absolute/path/to/local/source"
-  container_name: "your-container-name"
-  blob_prefix: "datasets/revlm_dc"
+  source_dir: "/Users/mgutierrezc/Documents/PhD/Projects/model_editing/repos/derm_vlms/test_folder"
+  container_name: "model-annotations"
+  blob_prefix: "test_folder"
   overwrite: false
 
 download:
-  container_name: "your-container-name"
-  blob_prefix: "datasets/revlm_dc"
-  target_dir: "/absolute/path/to/local/download"
+  container_name: "model-annotations"
+  blob_prefix: "test_folder"
+  target_dir: "/Users/mgutierrezc/Documents/PhD/Projects/model_editing/repos/derm_vlms/test_folder"
   overwrite: false

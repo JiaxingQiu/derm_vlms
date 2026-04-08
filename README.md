@@ -4,21 +4,38 @@ Benchmarking dermatology vision-language models on the MIDAS dataset for skin le
 
 ## Store annotations data
 
-In case you need to store the annotations, run the following command
+In case you need to store the annotations, run the following command:
 
 ```python
 python upload_to_blob.py configs/blob_config.yaml
 ```
 
-The config has the following parameters that should be updated accordingly
+The blob scripts use the container SAS URL and SAS token directly for the `model-annotations` container. `blob_prefix` will be the name of the folder within the blob where all the contents of your target folder will be stored.
+For example, if you want to upload a folder `test_folder` to the container with the following structure
+
+```
+  test_folder/
+  ├── folder_1/                                
+  ├── folder_2/
+```
+
+You'd have to use the path to `test_folder` for `source_dir` and use the name `test_folder` as your `blob_prefix`. Else, all subfolders will be stored in the container root by default
 
 ```yaml
+azure:
+  sas_url: "https://YOUR_ACCOUNT_NAME.blob.core.windows.net/model-annotations"
+  sas_token: "YOUR_SAS_TOKEN"
+
 upload:
   source_dir: "/absolute/path/to/local/source"
-  container_name: "your-container-name"
+  container_name: "model-annotations"
   blob_prefix: "datasets/revlm_dc"
   overwrite: false
 ```
+
+Downloading is similar. You first specify the `blob_prefix` of the folder you uploaded, e.g. `test_folder`, and then the `target_dir` where you'll store the contents that reside within `test_folder`. If you don't specify the `test_folder` folder name at the end of your `target_dir`, all the contents will be stored in the local root by default.
+
+If your `sas_url` already includes the query string, you can leave `sas_token` as `null`.
 
 ## Annotation interface (Django)
 
@@ -32,17 +49,17 @@ upload:
   └── gpt53_predictions_all.csv
 ```
 
-You can download the data from our container (by request) using the following command
+You can download the data from the `model-annotations` container using:
 
 ```python
 python download_from_blob.py configs/blob_config.yaml
 ```
 
-The script will take care of storing every file into their respective subfolder based on the following configuration
+The script recreates the subfolder structure locally using the blob names under the configured prefix:
 
 ```yaml
 download:
-  container_name: "your-container-name"
+  container_name: "model-annotations"
   blob_prefix: "datasets/revlm_dc"
   target_dir: "/absolute/path/to/local/download"
   overwrite: false
@@ -55,7 +72,7 @@ cd revlm_dc
 python manage.py makemigrations
 python manage.py migrate
 python manage.py parsedata
-python manage.py generate_assignments configs/test_config.yam
+python manage.py generate_assignments configs/test_config.yaml
 python manage.py runserver
 ```
 
@@ -77,7 +94,7 @@ enable_factors:
 ```bash
 cd revlm_dc
 python manage.py parsedata
-python manage.py generate_assignments configs/test_config.yam
+python manage.py generate_assignments configs/test_config.yaml
 python manage.py runserver
 ```
 
@@ -186,4 +203,3 @@ derm_vlms/
 ├── medgemma/              # MedGemma
 └── gpt53/                 # GPT-5.3 (Azure OpenAI)
 ```
-

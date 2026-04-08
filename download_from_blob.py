@@ -9,10 +9,11 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+from urllib.parse import urlparse
 from typing import Any
 
 import yaml
-from azure.storage.blob import BlobServiceClient
+from azure.storage.blob import ContainerClient
 
 
 def parse_args() -> argparse.Namespace:
@@ -42,22 +43,34 @@ def load_config(config_path: str | Path) -> dict[str, Any]:
     return config
 
 
-def build_service_client(config: dict[str, Any]) -> BlobServiceClient:
+def extract_container_name(container_url: str) -> str:
+    path_parts = urlparse(container_url).path.strip("/").split("/")
+    if not path_parts or not path_parts[0]:
+        raise ValueError(f"Could not extract container name from SAS URL: {container_url}")
+    return path_parts[0]
+
+
+def build_container_url(sas_url: str, sas_token: str | None) -> str:
+    if "?" in sas_url:
+        return sas_url
+    if sas_token:
+        return f"{sas_url.rstrip('?')}?{sas_token.lstrip('?')}"
+    return sas_url
+
+
+def build_container_client(config: dict[str, Any], container_name: str | None) -> ContainerClient:
     azure = config.get("azure", {})
     if not isinstance(azure, dict):
         raise ValueError("'azure' must be a mapping in the config file.")
 
-    connection_string = azure.get("connection_string")
-    account_url = azure.get("account_url")
-    credential = azure.get("credential")
+    sas_url = azure.get("sas_url")
+    sas_token = azure.get("sas_token")
 
-    if connection_string:
-        return BlobServiceClient.from_connection_string(connection_string)
-    if account_url:
-        return BlobServiceClient(account_url=account_url, credential=credential)
+    if sas_url:
+        return ContainerClient.from_container_url(build_container_url(sas_url, sas_token))
 
     raise ValueError(
-        "Provide either azure.connection_string or azure.account_url in the config."
+        "Provide azure.sas_url, optionally with azure.sas_token if the URL does not already include it."
     )
 
 
@@ -82,16 +95,14 @@ def download_folder(config: dict[str, Any]) -> None:
     target_dir = download.get("target_dir")
     overwrite = bool(download.get("overwrite", False))
 
-    if not container_name:
-        raise ValueError("Missing download.container_name in config.")
     if not target_dir:
         raise ValueError("Missing download.target_dir in config.")
 
     target_path = Path(target_dir).expanduser().resolve()
     target_path.mkdir(parents=True, exist_ok=True)
 
-    service_client = build_service_client(config)
-    container_client = service_client.get_container_client(container_name)
+    container_client = build_container_client(config, container_name)
+    resolved_container_name = container_name or extract_container_name(container_client.url)
 
     downloaded_count = 0
     blobs = container_client.list_blobs(name_starts_with=blob_prefix)
@@ -112,11 +123,11 @@ def download_folder(config: dict[str, Any]) -> None:
             handle.write(stream.readall())
 
         downloaded_count += 1
-        print(f"Downloaded {container_name}/{blob.name} -> {destination}")
+        print(f"Downloaded {resolved_container_name}/{blob.name} -> {destination}")
 
     print(
         f"Finished download: {downloaded_count} files from container "
-        f"'{container_name}' with prefix '{blob_prefix}' into {target_path}"
+        f"'{resolved_container_name}' with prefix '{blob_prefix}' into {target_path}"
     )
 
 

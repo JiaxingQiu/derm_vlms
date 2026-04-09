@@ -1,15 +1,15 @@
 azure:
-  sas_url: ""
-  sas_token: ""
+  sas_url: "https://YOUR_ACCOUNT_NAME.blob.core.windows.net/model-annotations"
+  sas_token: "YOUR_SAS_TOKEN"
 
 upload:
-  source_dir: "/Users/mgutierrezc/Documents/PhD/Projects/model_editing/repos/derm_vlms/test_folder"
+  source_dir: "/scratch/jq2uw/derm_vlms/results"
   container_name: "model-annotations"
-  blob_prefix: "test_folder"
+  blob_prefix: "datasets/revlm_dc"
   overwrite: false
 
 download:
   container_name: "model-annotations"
-  blob_prefix: "test_folder"
-  target_dir: "/Users/mgutierrezc/Documents/PhD/Projects/model_editing/repos/derm_vlms/test_folder"
+  blob_prefix: "datasets/revlm_dc"
+  target_dir: "/scratch/jq2uw/derm_vlms/results"
   overwrite: false

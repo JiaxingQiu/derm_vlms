@@ -10,22 +10,146 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/6.0/ref/settings/
 """
 
+import os
+import subprocess
 from pathlib import Path
+from urllib.parse import unquote, urlparse
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+
+def _load_env_file() -> None:
+    env_file = os.getenv("DJANGO_ENV_FILE", str(BASE_DIR / ".env.production"))
+    env_path = Path(env_file).expanduser()
+    if not env_path.exists():
+        return
+
+    for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        os.environ.setdefault(key, value)
+
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _env_list(name: str) -> list[str]:
+    return [item.strip() for item in os.getenv(name, "").split(",") if item.strip()]
+
+
+def _database_from_url(database_url: str) -> dict[str, object]:
+    parsed = urlparse(database_url)
+    if parsed.scheme not in {"postgres", "postgresql", "psql"}:
+        raise RuntimeError("DATABASE_URL must use postgres/postgresql scheme for Azure PostgreSQL.")
+
+    db_name = parsed.path.lstrip("/")
+    if not db_name:
+        raise RuntimeError("DATABASE_URL must include a database name path.")
+
+    return {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": db_name,
+        "USER": unquote(parsed.username or ""),
+        "PASSWORD": unquote(parsed.password or ""),
+        "HOST": parsed.hostname or "",
+        "PORT": str(parsed.port or "5432"),
+        "OPTIONS": {
+            "sslmode": os.getenv("DJANGO_DB_SSLMODE", "require"),
+        },
+    }
+
+
+def _database_settings() -> dict[str, dict[str, object]]:
+    database_url = os.getenv("DATABASE_URL", "").strip()
+    if database_url:
+        return {"default": _database_from_url(database_url)}
+
+    db_engine = os.getenv("DJANGO_DB_ENGINE", "sqlite").strip().lower()
+    if db_engine in {"postgres", "postgresql", "psql"}:
+        db_name = os.getenv("DJANGO_DB_NAME", "").strip()
+        db_user = os.getenv("DJANGO_DB_USER", "").strip()
+        db_password = os.getenv("DJANGO_DB_PASSWORD", "").strip()
+        db_password_command = os.getenv("DJANGO_DB_PASSWORD_COMMAND", "").strip()
+        if db_password_command:
+            try:
+                db_password = subprocess.check_output(
+                    db_password_command,
+                    shell=True,
+                    text=True,
+                ).strip()
+            except subprocess.CalledProcessError as exc:
+                raise RuntimeError(
+                    "Failed to get DJANGO_DB_PASSWORD from DJANGO_DB_PASSWORD_COMMAND"
+                ) from exc
+        db_host = os.getenv("DJANGO_DB_HOST", "").strip()
+        db_port = os.getenv("DJANGO_DB_PORT", "5432").strip()
+
+        missing = [
+            name
+            for name, value in {
+                "DJANGO_DB_NAME": db_name,
+                "DJANGO_DB_USER": db_user,
+                "DJANGO_DB_PASSWORD": db_password,
+                "DJANGO_DB_HOST": db_host,
+            }.items()
+            if not value
+        ]
+        if missing:
+            raise RuntimeError(
+                "Missing required PostgreSQL environment variables: " + ", ".join(missing)
+            )
+
+        return {
+            "default": {
+                "ENGINE": "django.db.backends.postgresql",
+                "NAME": db_name,
+                "USER": db_user,
+                "PASSWORD": db_password,
+                "HOST": db_host,
+                "PORT": db_port,
+                "OPTIONS": {
+                    "sslmode": os.getenv("DJANGO_DB_SSLMODE", "require"),
+                },
+            }
+        }
+
+    return {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": BASE_DIR / "db.sqlite3",
+        }
+    }
+
+
+_load_env_file()
 
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-i+r4yt_54k-s$j^wd)n$^5pray4#s74s1^p_rfi(##v286+u51'
+SECRET_KEY = os.getenv("DJANGO_SECRET_KEY")
+if not SECRET_KEY:
+    raise RuntimeError("DJANGO_SECRET_KEY is required. Set it in your environment file.")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = _env_bool("DJANGO_DEBUG", default=False)
 
-ALLOWED_HOSTS = ["*"]
+ALLOWED_HOSTS = _env_list("DJANGO_ALLOWED_HOSTS")
+if not ALLOWED_HOSTS:
+    ALLOWED_HOSTS = ["127.0.0.1", "localhost"] if DEBUG else []
+
+CSRF_TRUSTED_ORIGINS = _env_list("DJANGO_CSRF_TRUSTED_ORIGINS")
 
 
 # Application definition
@@ -73,12 +197,7 @@ WSGI_APPLICATION = 'revlm_dc.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-    }
-}
+DATABASES = _database_settings()
 
 
 # Password validation
@@ -115,7 +234,13 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
-STATIC_URL = 'static/'
+STATIC_URL = "/static/"
+STATIC_ROOT = Path(os.getenv("DJANGO_STATIC_ROOT", str(BASE_DIR / "staticfiles"))).expanduser()
 
 MEDIA_URL = "/media/"
-MEDIA_ROOT = BASE_DIR / "images"
+MEDIA_ROOT = Path(os.getenv("DJANGO_MEDIA_ROOT", str(BASE_DIR / "images"))).expanduser()
+
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+SESSION_COOKIE_SECURE = _env_bool("DJANGO_SESSION_COOKIE_SECURE", default=not DEBUG)
+CSRF_COOKIE_SECURE = _env_bool("DJANGO_CSRF_COOKIE_SECURE", default=not DEBUG)
+SECURE_SSL_REDIRECT = _env_bool("DJANGO_SECURE_SSL_REDIRECT", default=not DEBUG)

@@ -8,6 +8,14 @@ from django.http import HttpResponse
 from django.urls import path
 
 from .models import Dermatologist, Annotation
+from .views import (
+    build_page_sequence,
+    find_first_incomplete_page,
+    get_case_interface_map,
+    get_user_case_ids,
+    load_annotations_data as load_annotations_data_view,
+    load_users_config,
+)
 
 
 def load_annotations_data():
@@ -73,6 +81,20 @@ class DermatologistAdmin(admin.ModelAdmin):
     inlines = [AnnotationInline]
     change_list_template = "admin/dermatology_annotations/dermatologist/change_list.html"
 
+    def _get_user_page_sequence(self, obj):
+        users_config = load_users_config()
+        annotations_data = load_annotations_data_view()
+        login_id = obj.login_id
+
+        user_case_ids = get_user_case_ids(users_config, login_id)
+        if user_case_ids:
+            case_ids = [case_id for case_id in user_case_ids if case_id in annotations_data]
+        else:
+            case_ids = sorted(annotations_data.keys())
+
+        interface_map = get_case_interface_map(users_config, login_id)
+        return build_page_sequence(case_ids, annotations_data, interface_map), annotations_data
+
     def get_urls(self):
         urls = super().get_urls()
         custom_urls = [
@@ -85,10 +107,14 @@ class DermatologistAdmin(admin.ModelAdmin):
         return custom_urls + urls
 
     def get_user_case_count(self, obj):
-        return get_total_case_count()
+        pages, _ = self._get_user_page_sequence(obj)
+        return len(pages)
 
     def completed_cases_count(self, obj):
-        return obj.annotations.count()
+        pages, annotations_data = self._get_user_page_sequence(obj)
+        if not pages:
+            return 0
+        return find_first_incomplete_page(pages, annotations_data, obj)
     completed_cases_count.short_description = "completed"
 
     def total_cases_count(self, obj):
@@ -97,7 +123,7 @@ class DermatologistAdmin(admin.ModelAdmin):
 
     def progress_display(self, obj):
         total = self.get_user_case_count(obj)
-        completed = obj.annotations.count()
+        completed = self.completed_cases_count(obj)
         if total == 0:
             return "0 / 0"
         return f"{completed} / {total}"

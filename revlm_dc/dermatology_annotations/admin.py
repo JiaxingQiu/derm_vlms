@@ -1,5 +1,6 @@
 import csv
 import json
+import re
 from pathlib import Path
 
 from django.conf import settings
@@ -17,6 +18,8 @@ from .views import (
     load_users_config,
 )
 
+_EMPTY_TC = {"text": "", "crops": []}
+
 
 def load_annotations_data():
     json_path = Path(settings.BASE_DIR) / "data" / "annotations_data.json"
@@ -31,13 +34,19 @@ def get_total_case_count():
 
 def inline_crops(text, crops):
     """Replace [ev N] markers with [crop:{...}] using the Nth crop rect."""
-    import re
     def _replace(m):
         idx = int(m.group(1)) - 1
         if 0 <= idx < len(crops or []):
             return "[crop:" + json.dumps(crops[idx]) + "]"
         return m.group(0)
     return re.sub(r"\[ev\s+(\d+)\]", _replace, text or "")
+
+
+def inline_tc(tc):
+    """Inline crops into a {text, crops} dict, returning the final string."""
+    if not tc or not isinstance(tc, dict):
+        return ""
+    return inline_crops(tc.get("text", ""), tc.get("crops", []))
 
 
 class AnnotationInline(admin.TabularInline):
@@ -69,7 +78,11 @@ class AnnotationAdmin(admin.ModelAdmin):
 
     def short_feedback(self, obj):
         if obj.interface_type == "unconditional":
-            diags = [obj.user_diagnosis_1, obj.user_diagnosis_2, obj.user_diagnosis_3]
+            diags = [
+                (obj.user_diagnosis_1 or _EMPTY_TC).get("text", ""),
+                (obj.user_diagnosis_2 or _EMPTY_TC).get("text", ""),
+                (obj.user_diagnosis_3 or _EMPTY_TC).get("text", ""),
+            ]
             filled = [d for d in diags if d.strip()]
             return f"{len(filled)} diagnoses" if filled else ""
         items = list(obj.diagnosis_feedback or []) + list(obj.description_feedback or [])
@@ -200,12 +213,12 @@ class DermatologistAdmin(admin.ModelAdmin):
 
                 diag_fb_export = json.dumps(diag_items, ensure_ascii=False) if diag_items else ""
                 desc_fb_export = json.dumps(desc_items, ensure_ascii=False) if desc_items else ""
-                other_fb_export = inline_crops(ann.other_feedback, ann.other_feedback_crops)
+                other_fb_export = inline_tc(ann.other_feedback)
             else:
-                ud1 = inline_crops(ann.user_diagnosis_1, ann.user_diagnosis_1_crops)
-                ud2 = inline_crops(ann.user_diagnosis_2, ann.user_diagnosis_2_crops)
-                ud3 = inline_crops(ann.user_diagnosis_3, ann.user_diagnosis_3_crops)
-                ur = inline_crops(ann.user_reasons, ann.user_reasons_crops)
+                ud1 = inline_tc(ann.user_diagnosis_1)
+                ud2 = inline_tc(ann.user_diagnosis_2)
+                ud3 = inline_tc(ann.user_diagnosis_3)
+                ur = inline_tc(ann.user_reasons)
 
             writer.writerow([
                 ann.dermatologist.login_id,

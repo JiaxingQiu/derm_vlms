@@ -1,6 +1,6 @@
-from pathlib import Path
 import csv
 import json
+from pathlib import Path
 
 from django.conf import settings
 from django.contrib import admin
@@ -29,21 +29,29 @@ def get_total_case_count():
     return len(data)
 
 
+def inline_crops(text, crops):
+    """Replace [ev N] markers with [crop:{...}] using the Nth crop rect."""
+    import re
+    def _replace(m):
+        idx = int(m.group(1)) - 1
+        if 0 <= idx < len(crops or []):
+            return "[crop:" + json.dumps(crops[idx]) + "]"
+        return m.group(0)
+    return re.sub(r"\[ev\s+(\d+)\]", _replace, text or "")
+
+
 class AnnotationInline(admin.TabularInline):
     model = Annotation
     extra = 0
     fields = (
         "case_id",
-        "model_response_correct",
-        "difficulty",
-        "textual_feedback",
-        "visual_feedback",
-        "review_data",
+        "model",
+        "interface_type",
         "created_at",
         "updated_at",
     )
     readonly_fields = ("created_at", "updated_at")
-    ordering = ("case_id",)
+    ordering = ("case_id", "model")
 
 
 @admin.register(Annotation)
@@ -51,19 +59,23 @@ class AnnotationAdmin(admin.ModelAdmin):
     list_display = (
         "dermatologist",
         "case_id",
-        "model_response_correct",
-        "difficulty",
-        "short_textual_feedback",
+        "model",
+        "interface_type",
+        "short_feedback",
         "updated_at",
     )
-    list_filter = ("model_response_correct", "dermatologist")
-    search_fields = ("dermatologist__login_id", "case_id", "textual_feedback", "visual_feedback")
+    list_filter = ("interface_type", "dermatologist")
+    search_fields = ("dermatologist__login_id", "case_id", "model")
 
-    def short_textual_feedback(self, obj):
-        if not obj.textual_feedback:
-            return ""
-        return obj.textual_feedback[:60]
-    short_textual_feedback.short_description = "textual feedback"
+    def short_feedback(self, obj):
+        if obj.interface_type == "unconditional":
+            diags = [obj.user_diagnosis_1, obj.user_diagnosis_2, obj.user_diagnosis_3]
+            filled = [d for d in diags if d.strip()]
+            return f"{len(filled)} diagnoses" if filled else ""
+        items = list(obj.diagnosis_feedback or []) + list(obj.description_feedback or [])
+        reviewed = sum(1 for i in items if i.get("label"))
+        return f"{reviewed}/{len(items)} reviewed" if items else ""
+    short_feedback.short_description = "feedback"
 
 
 @admin.register(Dermatologist)
@@ -130,20 +142,31 @@ class DermatologistAdmin(admin.ModelAdmin):
     progress_display.short_description = "progress"
 
     def export_csv_view(self, request):
-        response = HttpResponse(content_type="text/csv")
+        """Export all annotations in the unified CSV format.
+
+        Columns mirror the old static CSV (id, model, raw_response,
+        diagnosis_feedback, description_feedback, other_feedback) plus new
+        unconditional columns (user_diagnosis_1/2/3, user_reasons).
+        Crops are inlined into text as [crop:{...}].
+        """
+        response = HttpResponse(content_type="text/csv; charset=utf-8")
         response["Content-Disposition"] = 'attachment; filename="annotations_export.csv"'
+        response.write("\ufeff")
 
         writer = csv.writer(response)
         writer.writerow([
             "login_id",
-            "is_done",
-            "current_case_index",
             "case_id",
-            "model_response_correct",
-            "difficulty",
-            "textual_feedback",
-            "visual_feedback",
-            "review_data",
+            "model",
+            "interface_type",
+            "raw_response",
+            "diagnosis_feedback",
+            "description_feedback",
+            "other_feedback",
+            "user_diagnosis_1",
+            "user_diagnosis_2",
+            "user_diagnosis_3",
+            "user_reasons",
             "created_at",
             "updated_at",
         ])
@@ -152,22 +175,53 @@ class DermatologistAdmin(admin.ModelAdmin):
             Annotation.objects
             .select_related("dermatologist")
             .all()
-            .order_by("dermatologist__login_id", "case_id")
+            .order_by("dermatologist__login_id", "case_id", "model")
         )
 
-        for annotation in annotations:
+        for ann in annotations:
+            diag_fb_export = ""
+            desc_fb_export = ""
+            other_fb_export = ""
+            ud1 = ud2 = ud3 = ur = ""
+
+            if ann.interface_type == "conditional":
+                diag_items = []
+                for item in ann.diagnosis_feedback or []:
+                    entry = {"text": item.get("text", ""), "label": item.get("label", "")}
+                    if item.get("label") == "incorrect" and item.get("feedback"):
+                        entry["feedback"] = inline_crops(item["feedback"], item.get("crops", []))
+                    diag_items.append(entry)
+                desc_items = []
+                for item in ann.description_feedback or []:
+                    entry = {"text": item.get("text", ""), "label": item.get("label", "")}
+                    if item.get("label") == "incorrect" and item.get("feedback"):
+                        entry["feedback"] = inline_crops(item["feedback"], item.get("crops", []))
+                    desc_items.append(entry)
+
+                diag_fb_export = json.dumps(diag_items, ensure_ascii=False) if diag_items else ""
+                desc_fb_export = json.dumps(desc_items, ensure_ascii=False) if desc_items else ""
+                other_fb_export = inline_crops(ann.other_feedback, ann.other_feedback_crops)
+            else:
+                ud1 = inline_crops(ann.user_diagnosis_1, ann.user_diagnosis_1_crops)
+                ud2 = inline_crops(ann.user_diagnosis_2, ann.user_diagnosis_2_crops)
+                ud3 = inline_crops(ann.user_diagnosis_3, ann.user_diagnosis_3_crops)
+                ur = inline_crops(ann.user_reasons, ann.user_reasons_crops)
+
             writer.writerow([
-                annotation.dermatologist.login_id,
-                annotation.dermatologist.is_done,
-                annotation.dermatologist.current_case_index,
-                annotation.case_id,
-                annotation.model_response_correct,
-                annotation.difficulty,
-                annotation.textual_feedback or "",
-                annotation.visual_feedback or "",
-                json.dumps(annotation.review_data, ensure_ascii=False),
-                annotation.created_at,
-                annotation.updated_at,
+                ann.dermatologist.login_id,
+                ann.case_id,
+                ann.model,
+                ann.interface_type,
+                ann.raw_response,
+                diag_fb_export,
+                desc_fb_export,
+                other_fb_export,
+                ud1,
+                ud2,
+                ud3,
+                ur,
+                ann.created_at,
+                ann.updated_at,
             ])
 
         return response
@@ -176,6 +230,3 @@ class DermatologistAdmin(admin.ModelAdmin):
         extra_context = extra_context or {}
         extra_context["export_csv_url"] = "export-csv/"
         return super().changelist_view(request, extra_context=extra_context)
-    
-# Register your models here.
-# admin.site.register(Dermatologist)

@@ -11,6 +11,10 @@ class Dermatologist(models.Model):
         return self.login_id
 
 
+def _empty_text_crops():
+    return {"text": "", "crops": []}
+
+
 class Annotation(models.Model):
     dermatologist = models.ForeignKey(
         Dermatologist,
@@ -18,15 +22,23 @@ class Annotation(models.Model):
         related_name="annotations",
     )
     case_id = models.CharField(max_length=100)
+    model = models.CharField(max_length=100, blank=True, default="")
+    interface_type = models.CharField(max_length=20, default="conditional")
 
-    # Legacy fields kept for compatibility with the existing template/admin.
-    model_response_correct = models.BooleanField(default=False)
-    textual_feedback = models.TextField(blank=True, null=True)
-    visual_feedback = models.TextField(blank=True, null=True)
+    # --- Conditional: AI response evaluation ---
+    raw_response = models.TextField(blank=True, default="")
+    # [{text, label, feedback, crops: [{x,y,w,h},...]}]
+    diagnosis_feedback = models.JSONField(default=list, blank=True)
+    description_feedback = models.JSONField(default=list, blank=True)
+    # {text, crops: [{x,y,w,h},...]}
+    other_feedback = models.JSONField(default=_empty_text_crops, blank=True)
 
-    # Frontend payload for the richer interface in index.html.
-    review_data = models.JSONField(default=dict, blank=True)
-    difficulty = models.PositiveSmallIntegerField(blank=True, null=True)
+    # --- Unconditional: human independent assessment ---
+    # Each is {text, crops: [{x,y,w,h},...]}
+    user_diagnosis_1 = models.JSONField(default=_empty_text_crops, blank=True)
+    user_diagnosis_2 = models.JSONField(default=_empty_text_crops, blank=True)
+    user_diagnosis_3 = models.JSONField(default=_empty_text_crops, blank=True)
+    user_reasons = models.JSONField(default=_empty_text_crops, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -34,10 +46,11 @@ class Annotation(models.Model):
     class Meta:
         constraints = [
             models.UniqueConstraint(
-                fields=["dermatologist", "case_id"],
-                name="unique_dermatologist_case",
+                fields=["dermatologist", "case_id", "model"],
+                name="unique_dermatologist_case_model",
             )
         ]
 
     def __str__(self):
-        return f"{self.dermatologist.login_id} - {self.case_id}"
+        label = self.model or "human"
+        return f"{self.dermatologist.login_id} - {self.case_id} - {label}"

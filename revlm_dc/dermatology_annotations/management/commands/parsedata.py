@@ -110,6 +110,7 @@ class Command(BaseCommand):
                     parse_stats[model_name]["missed"] += 1
 
                 case[model_name] = {
+                    "raw_response": str(raw),
                     "diagnoses": diagnoses,
                     "descriptions": descriptions,
                 }

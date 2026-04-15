@@ -25,6 +25,8 @@ tokens.py
 tokens.txt
 ssh
 ssh_rivanna
+.env*
+!.env*.example
 
 # Python / Jupyter
 __pycache__/

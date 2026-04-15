@@ -73,7 +73,7 @@ python manage.py makemigrations
 python manage.py migrate
 python manage.py parsedata
 python manage.py generate_assignments configs/test_config.yaml
-python manage.py runserver
+python manage.py runserver 0.0.0.0:8000
 ```
 
 The config parameters from annotations has the following content (update accordingly)
@@ -82,6 +82,15 @@ The config parameters from annotations has the following content (update accordi
 users:
   - user_a
   - user_b
+  - user_c
+  - user_d
+  - user_e
+  - user_f
+  - user_g
+  - user_h
+  - user_i
+  - user_j
+  - user_k
 seed: 42
 max_lesions: 3
 enable_factors:
@@ -106,6 +115,16 @@ python manage.py runserver
 ```
 
 `parsedata` reads `results/*_predictions_all.csv`, parses VLM responses into diagnoses + descriptions, writes `revlm_dc/data/annotations_data.json`, and copies combined images to `revlm_dc/images/`. `generate_assignments` builds per-user lesion queues; adjust `--users`, `--max-lesions`, and `--enable-factors` as needed.
+
+
+### Run admin 
+
+```bash
+cd revlm_dc
+conda activate dermato_llama
+python manage.py createsuperuser
+```
+Then create user name, email and password. http://localhost:8000/admin/
 
 ## Interface Engineering (local)
 

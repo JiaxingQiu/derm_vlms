@@ -9,6 +9,13 @@ from django.shortcuts import get_object_or_404, redirect, render
 from .models import Annotation, Dermatologist
 
 
+_EMPTY_TC = {"text": "", "crops": []}
+
+
+# ---------------------------------------------------------------------------
+# Data loading
+# ---------------------------------------------------------------------------
+
 def load_users_config():
     json_path = Path(settings.BASE_DIR) / "data" / "users.json"
     with open(json_path, "r", encoding="utf-8") as f:
@@ -24,6 +31,10 @@ def load_annotations_data():
     with open(json_path, "r", encoding="utf-8") as f:
         return json.load(f)
 
+
+# ---------------------------------------------------------------------------
+# User / assignment helpers
+# ---------------------------------------------------------------------------
 
 def get_user_case_ids(users_config, login_id):
     """Return the ordered list of case_ids assigned to this user."""
@@ -42,13 +53,13 @@ def get_case_interface_map(users_config, login_id):
     }
 
 
-def get_case_model_data(case_data):
-    return {
-        key: value
-        for key, value in case_data.items()
-        if key != "image_path" and isinstance(value, dict)
-    }
+def get_model_keys(case_data):
+    return [k for k in case_data if k != "image_path" and isinstance(case_data[k], dict)]
 
+
+# ---------------------------------------------------------------------------
+# Request parsing
+# ---------------------------------------------------------------------------
 
 def is_json_request(request):
     return "application/json" in (request.content_type or "")
@@ -73,219 +84,196 @@ def parse_request_payload(request):
     if request.POST.get("action"):
         payload["action"] = request.POST.get("action")
 
-    if "difficulty" not in payload and request.POST.get("difficulty"):
-        payload["difficulty"] = request.POST.get("difficulty")
-
-    if "other_feedback" not in payload and request.POST.get("textual_feedback"):
-        payload["other_feedback"] = request.POST.get("textual_feedback", "").strip()
-
-    if "visual_feedback" not in payload and request.POST.get("visual_feedback"):
-        payload["visual_feedback"] = request.POST.get("visual_feedback", "").strip()
-
-    if "model_response_correct" not in payload and "model_response_correct" in request.POST:
-        payload["model_response_correct"] = request.POST.get("model_response_correct") == "on"
-
     return payload
 
 
+# ---------------------------------------------------------------------------
+# Feedback normalisation
+# ---------------------------------------------------------------------------
+
+_LABEL_MAP = {
+    "yes": "correct",
+    "no": "incorrect",
+    "correct": "correct",
+    "incorrect": "incorrect",
+    "maybe": "maybe",
+}
+
+
 def normalize_item_feedback(items):
-    normalized = []
+    """Normalise a list of per-item feedback dicts.
+
+    Each item keeps {text, label, feedback, crops} with crops stored as
+    a per-item array of {x, y, w, h} rectangles so the UI can re-render
+    evidence thumbnails on reload.
+    """
+    normalised = []
     for item in items or []:
         if not isinstance(item, dict):
             continue
-        label = item.get("label") or item.get("status") or ""
-        label = {
-            "yes": "correct",
-            "no": "incorrect",
-            "correct": "correct",
-            "incorrect": "incorrect",
-            "maybe": "maybe",
-        }.get(label, "")
-        normalized.append(
-            {
-                "text": item.get("text", ""),
-                "label": label,
-                "feedback": item.get("feedback", ""),
-                "crops": item.get("crops", []),
-            }
-        )
-    return normalized
+        label = _LABEL_MAP.get(item.get("label") or item.get("status") or "", "")
+        normalised.append({
+            "text": item.get("text", ""),
+            "label": label,
+            "feedback": item.get("feedback", ""),
+            "crops": item.get("crops", []),
+        })
+    return normalised
 
 
-def normalize_model_review(model_review, existing_model_review=None):
-    existing_model_review = existing_model_review or {}
-
-    difficulty = model_review.get("difficulty", existing_model_review.get("difficulty"))
-    if difficulty in ("", None):
-        difficulty = None
-    elif isinstance(difficulty, str) and difficulty.isdigit():
-        difficulty = int(difficulty)
-
-    raw_state = model_review.get("raw_state", existing_model_review.get("raw_state", {}))
-
-    normalized = {
-        "diagnosis_feedback": normalize_item_feedback(
-            model_review.get("diagnosis_feedback", existing_model_review.get("diagnosis_feedback", []))
-        ),
-        "description_feedback": normalize_item_feedback(
-            model_review.get("description_feedback", existing_model_review.get("description_feedback", []))
-        ),
-        "other_feedback": model_review.get(
-            "other_feedback",
-            existing_model_review.get("other_feedback", ""),
-        ),
-        "other_feedback_crops": model_review.get(
-            "other_feedback_crops",
-            existing_model_review.get("other_feedback_crops", []),
-        ),
-        "difficulty": difficulty,
-        "raw_state": raw_state if isinstance(raw_state, dict) else {},
-    }
-
-    if "visual_feedback" in model_review:
-        normalized["visual_feedback"] = model_review.get("visual_feedback", "")
-    elif existing_model_review.get("visual_feedback"):
-        normalized["visual_feedback"] = existing_model_review["visual_feedback"]
-
-    return normalized
+def _tc(text="", crops=None):
+    """Build a {text, crops} dict."""
+    return {"text": text, "crops": crops if crops is not None else []}
 
 
-def summarize_text_feedback(review):
-    parts = []
-
-    for item in review.get("diagnosis_feedback", []):
-        if item.get("label") == "incorrect" and item.get("feedback"):
-            parts.append(f"Diagnosis correction: {item['feedback']}")
-
-    for item in review.get("description_feedback", []):
-        if item.get("label") == "incorrect" and item.get("feedback"):
-            parts.append(f"Description correction: {item['feedback']}")
-
-    other_feedback = review.get("other_feedback", "").strip()
-    if other_feedback:
-        parts.append(other_feedback)
-
-    return "\n".join(parts) if parts else ""
+def _get_tc(source, key, default=None):
+    """Read a {text, crops} value from a dict or return existing default."""
+    val = source.get(key)
+    if isinstance(val, dict) and "text" in val:
+        return {"text": val.get("text", ""), "crops": val.get("crops", [])}
+    if default is not None:
+        return default
+    return dict(_EMPTY_TC)
 
 
-def summarize_visual_feedback(review):
-    visual_payload = {}
+# ---------------------------------------------------------------------------
+# Annotation update helpers
+# ---------------------------------------------------------------------------
 
-    for key in ("other_feedback_crops", "visual_feedback"):
-        value = review.get(key)
-        if value:
-            visual_payload[key] = value
+def update_annotation_conditional(annotation, payload, model_key, case_data):
+    """Populate *conditional* (AI evaluation) fields on an annotation."""
+    model_info = case_data.get(model_key, {})
 
-    diag_crops = [
-        item["crops"]
-        for item in review.get("diagnosis_feedback", [])
-        if item.get("crops")
-    ]
-    desc_crops = [
-        item["crops"]
-        for item in review.get("description_feedback", [])
-        if item.get("crops")
-    ]
+    annotation.model = model_key
+    annotation.interface_type = "conditional"
+    annotation.raw_response = model_info.get("raw_response", "")
 
-    if diag_crops:
-        visual_payload["diagnosis_crops"] = diag_crops
-    if desc_crops:
-        visual_payload["description_crops"] = desc_crops
-
-    return json.dumps(visual_payload) if visual_payload else ""
-
-
-def review_is_fully_correct(review):
-    labels = [
-        item.get("label")
-        for group in ("diagnosis_feedback", "description_feedback")
-        for item in review.get(group, [])
-        if item.get("label")
-    ]
-    return bool(labels) and all(label == "correct" for label in labels)
-
-
-def build_frontend_review(payload, existing_review=None):
-    existing_review = existing_review or {}
-    existing_models_review = dict(existing_review.get("models", {}))
-
-    if isinstance(payload.get("models"), dict):
-        models_review = {}
-        for model_name, model_review in payload["models"].items():
-            if not isinstance(model_review, dict):
-                continue
-            models_review[model_name] = normalize_model_review(
-                model_review,
-                existing_models_review.get(model_name, {}),
-            )
-
-        return {
-            "active_model": payload.get("active_model") or existing_review.get("active_model"),
-            "models": models_review,
-        }
-
-    model_name = payload.get("model_name") or payload.get("vlm") or payload.get("model") or "default"
-    models_review = dict(existing_models_review)
-    models_review[model_name] = normalize_model_review(
-        payload,
-        existing_models_review.get(model_name, {}),
+    annotation.diagnosis_feedback = normalize_item_feedback(
+        payload.get("diagnosis_feedback", annotation.diagnosis_feedback or []),
     )
-    return {"active_model": model_name, "models": models_review}
+    annotation.description_feedback = normalize_item_feedback(
+        payload.get("description_feedback", annotation.description_feedback or []),
+    )
 
-
-def update_annotation_from_frontend(annotation, payload):
-    review_data = build_frontend_review(payload, annotation.review_data)
-    active_model = review_data["active_model"]
-    active_review = review_data["models"][active_model]
-
-    annotation.review_data = review_data
-    annotation.difficulty = active_review.get("difficulty")
-    annotation.model_response_correct = review_is_fully_correct(active_review)
-    annotation.textual_feedback = summarize_text_feedback(active_review)
-    annotation.visual_feedback = summarize_visual_feedback(active_review)
+    other_text = payload.get("other_feedback", "")
+    other_crops = payload.get("other_feedback_crops", [])
+    if other_text or other_crops:
+        annotation.other_feedback = _tc(other_text, other_crops)
+    elif not (annotation.other_feedback or {}).get("text"):
+        annotation.other_feedback = dict(_EMPTY_TC)
 
 
 def update_annotation_unconditional(annotation, payload):
-    existing = annotation.review_data or {}
-    default_diags = existing.get("user_diagnoses", ["", "", ""])
-    default_diag_crops = existing.get("user_diagnoses_crops", [[], [], []])
+    """Populate *unconditional* (human-only) fields on an annotation."""
+    annotation.interface_type = "unconditional"
+    annotation.model = ""
 
-    review_data = {
-        "interface_type": "unconditional",
-        "user_diagnoses": payload.get("user_diagnoses", default_diags),
-        "user_diagnoses_crops": payload.get("user_diagnoses_crops", default_diag_crops),
-        "user_reasons": payload.get(
-            "user_reasons", existing.get("user_reasons", "")
-        ),
-        "user_reasons_crops": payload.get(
-            "user_reasons_crops", existing.get("user_reasons_crops", [])
-        ),
+    existing = {
+        "user_diagnoses": [
+            (annotation.user_diagnosis_1 or _EMPTY_TC).get("text", ""),
+            (annotation.user_diagnosis_2 or _EMPTY_TC).get("text", ""),
+            (annotation.user_diagnosis_3 or _EMPTY_TC).get("text", ""),
+        ],
+        "user_diagnoses_crops": [
+            (annotation.user_diagnosis_1 or _EMPTY_TC).get("crops", []),
+            (annotation.user_diagnosis_2 or _EMPTY_TC).get("crops", []),
+            (annotation.user_diagnosis_3 or _EMPTY_TC).get("crops", []),
+        ],
+        "user_reasons": (annotation.user_reasons or _EMPTY_TC).get("text", ""),
+        "user_reasons_crops": (annotation.user_reasons or _EMPTY_TC).get("crops", []),
     }
-    annotation.review_data = review_data
 
-    parts = []
-    diags = review_data["user_diagnoses"]
-    if isinstance(diags, list):
-        for i, d in enumerate(diags, 1):
-            if d.strip():
-                parts.append(f"{i}. {d.strip()}")
-    reasons = review_data["user_reasons"].strip()
-    if reasons:
-        parts.append(f"Reasons: {reasons}")
-    annotation.textual_feedback = "\n".join(parts) if parts else ""
+    diags = payload.get("user_diagnoses", existing["user_diagnoses"])
+    diag_crops = payload.get("user_diagnoses_crops", existing["user_diagnoses_crops"])
 
-    visual = {}
-    for key in ("user_diagnoses_crops", "user_reasons_crops"):
-        if review_data.get(key):
-            visual[key] = review_data[key]
-    annotation.visual_feedback = json.dumps(visual) if visual else ""
+    annotation.user_diagnosis_1 = _tc(
+        diags[0] if len(diags) > 0 else "",
+        diag_crops[0] if len(diag_crops) > 0 else [],
+    )
+    annotation.user_diagnosis_2 = _tc(
+        diags[1] if len(diags) > 1 else "",
+        diag_crops[1] if len(diag_crops) > 1 else [],
+    )
+    annotation.user_diagnosis_3 = _tc(
+        diags[2] if len(diags) > 2 else "",
+        diag_crops[2] if len(diag_crops) > 2 else [],
+    )
+    annotation.user_reasons = _tc(
+        payload.get("user_reasons", existing["user_reasons"]),
+        payload.get("user_reasons_crops", existing["user_reasons_crops"]),
+    )
 
 
-def apply_legacy_form_payload(annotation, request):
-    annotation.model_response_correct = request.POST.get("model_response_correct") == "on"
-    annotation.textual_feedback = request.POST.get("textual_feedback", "").strip()
-    annotation.visual_feedback = request.POST.get("visual_feedback", "").strip()
+# ---------------------------------------------------------------------------
+# Page sequence / completion
+# ---------------------------------------------------------------------------
 
+def build_page_sequence(case_ids, annotations_data, interface_map=None):
+    pages = []
+    for case_id in case_ids:
+        iface = (interface_map or {}).get(case_id, "conditional")
+        if iface == "unconditional":
+            pages.append((case_id, None))
+        else:
+            case_data = annotations_data.get(case_id, {})
+            model_keys = get_model_keys(case_data)
+            for model_key in model_keys:
+                pages.append((case_id, model_key))
+    return pages
+
+
+def is_page_complete(annotation, model_key, case_data):
+    """Check whether an annotation page has all required fields filled."""
+    if annotation is None:
+        return False
+
+    if model_key is None:
+        diags = [
+            (annotation.user_diagnosis_1 or _EMPTY_TC).get("text", ""),
+            (annotation.user_diagnosis_2 or _EMPTY_TC).get("text", ""),
+            (annotation.user_diagnosis_3 or _EMPTY_TC).get("text", ""),
+        ]
+        all_diags = all(d.strip() for d in diags)
+        has_reasons = bool(
+            (annotation.user_reasons or _EMPTY_TC).get("text", "").strip()
+        )
+        return all_diags and has_reasons
+
+    source = case_data.get(model_key, {})
+    total = len(source.get("diagnoses", [])) + len(source.get("descriptions", []))
+    if total == 0:
+        return True
+
+    all_items = list(annotation.diagnosis_feedback or []) + list(annotation.description_feedback or [])
+    reviewed = sum(1 for item in all_items if item.get("label"))
+    for item in all_items:
+        if item.get("label") == "incorrect" and not (item.get("feedback") or "").strip():
+            return False
+    return reviewed >= total
+
+
+def find_first_incomplete_page(pages, annotations_data, dermatologist):
+    cache = {}
+    for pi, (case_id, model_key) in enumerate(pages):
+        cache_key = (case_id, model_key or "")
+        if cache_key not in cache:
+            try:
+                cache[cache_key] = Annotation.objects.get(
+                    dermatologist=dermatologist,
+                    case_id=case_id,
+                    model=model_key or "",
+                )
+            except Annotation.DoesNotExist:
+                cache[cache_key] = None
+        case_data = annotations_data.get(case_id, {})
+        if not is_page_complete(cache[cache_key], model_key, case_data):
+            return pi
+    return len(pages)
+
+
+# ---------------------------------------------------------------------------
+# Views
+# ---------------------------------------------------------------------------
 
 def login_view(request):
     error_message = None
@@ -304,63 +292,10 @@ def login_view(request):
     return render(request, "login.html", {"error_message": error_message})
 
 
-def get_model_keys(case_data):
-    return [k for k in case_data if k != "image_path" and isinstance(case_data[k], dict)]
-
-
-def build_page_sequence(case_ids, annotations_data, interface_map=None):
-    pages = []
-    for case_id in case_ids:
-        iface = (interface_map or {}).get(case_id, "conditional")
-        if iface == "unconditional":
-            pages.append((case_id, None))
-        else:
-            case_data = annotations_data.get(case_id, {})
-            model_keys = get_model_keys(case_data)
-            for model_key in model_keys:
-                pages.append((case_id, model_key))
-    return pages
-
-
-def is_page_complete(review_data, model_key, case_data):
-    review_data = review_data or {}
-
-    if model_key is None:
-        diags = review_data.get("user_diagnoses", [])
-        all_diags = isinstance(diags, list) and all(
-            d.strip() for d in diags
-        ) and len(diags) >= 3
-        has_reasons = bool((review_data.get("user_reasons") or "").strip())
-        return all_diags and has_reasons
-
-    model_review = review_data.get("models", {}).get(model_key, {})
-    source = case_data.get(model_key, {})
-    total = len(source.get("diagnoses", [])) + len(source.get("descriptions", []))
-    if total == 0:
-        return True
-    reviewed = 0
-    all_items = list(model_review.get("diagnosis_feedback", [])) + list(model_review.get("description_feedback", []))
-    for item in all_items:
-        if item.get("label"):
-            reviewed += 1
-        if item.get("label") == "incorrect" and not (item.get("feedback") or "").strip():
-            return False
-    return reviewed >= total
-
-
-def find_first_incomplete_page(pages, annotations_data, dermatologist):
-    annotations_cache = {}
-    for pi, (case_id, model_key) in enumerate(pages):
-        if case_id not in annotations_cache:
-            try:
-                ann = Annotation.objects.get(dermatologist=dermatologist, case_id=case_id)
-                annotations_cache[case_id] = ann.review_data
-            except Annotation.DoesNotExist:
-                annotations_cache[case_id] = {}
-        case_data = annotations_data.get(case_id, {})
-        if not is_page_complete(annotations_cache[case_id], model_key, case_data):
-            return pi
-    return len(pages)
+TEMPLATE_MAP = {
+    "conditional": "annotations_conditional.html",
+    "unconditional": "annotations_unconditional.html",
+}
 
 
 def annotations_view(request):
@@ -381,25 +316,18 @@ def annotations_view(request):
             return [int(c) if c.isdigit() else c.lower() for c in re.split(r'(\d+)', s)]
         case_ids = sorted(annotations_data.keys(), key=natural_key)
 
-    TEMPLATE_MAP = {
-        "conditional": "annotations_conditional.html",
-        "unconditional": "annotations_unconditional.html",
-    }
-
     if not case_ids:
         return render(
             request,
             "annotations_conditional.html",
-            {
-                "login_id": login_id,
-                "no_cases": True,
-            },
+            {"login_id": login_id, "no_cases": True},
         )
 
     interface_map = get_case_interface_map(users_config, login_id)
     pages = build_page_sequence(case_ids, annotations_data, interface_map)
     total_pages = len(pages)
 
+    # ---- Determine current flat page index ----
     is_nav_redirect = request.method == "GET" and request.GET.get("nav") == "1"
 
     if request.method == "GET" and not is_nav_redirect:
@@ -417,6 +345,7 @@ def annotations_view(request):
                     flat_index = pi + current_model_idx
                     break
 
+    # ---- Done-confirmation screen ----
     if flat_index >= total_pages:
         if request.method == "POST":
             action = request.POST.get("action")
@@ -443,30 +372,32 @@ def annotations_view(request):
         return render(
             request,
             "annotations_conditional.html",
-            {
-                "login_id": login_id,
-                "show_done_confirmation": True,
-            },
+            {"login_id": login_id, "show_done_confirmation": True},
         )
 
     if dermatologist.is_done:
         return redirect("thank_you")
 
+    # ---- Current page data ----
     flat_index = min(flat_index, total_pages - 1)
     current_case_id, current_model_key = pages[flat_index]
     current_case_data = annotations_data[current_case_id]
     current_interface = interface_map.get(current_case_id, "conditional")
 
-    if current_model_key is not None:
-        current_model_data = current_case_data.get(current_model_key, {})
-    else:
-        current_model_data = {}
+    current_model_data = (
+        current_case_data.get(current_model_key, {})
+        if current_model_key is not None
+        else {}
+    )
 
     annotation, _ = Annotation.objects.get_or_create(
         dermatologist=dermatologist,
         case_id=current_case_id,
+        model=current_model_key or "",
+        defaults={"interface_type": current_interface},
     )
 
+    # ---- POST: save annotation ----
     if request.method == "POST":
         payload = parse_request_payload(request)
         action = payload.get("action", "save")
@@ -482,22 +413,13 @@ def annotations_view(request):
         if current_interface == "unconditional":
             update_annotation_unconditional(annotation, payload)
         else:
-            payload["model_name"] = current_model_key
-            if (
-                is_json_request(request)
-                or isinstance(payload.get("models"), dict)
-                or payload.get("active_model")
-                or payload.get("model_name")
-                or payload.get("diagnosis_feedback")
-                or payload.get("description_feedback")
-                or payload.get("other_feedback") is not None
-            ):
-                update_annotation_from_frontend(annotation, payload)
-            else:
-                apply_legacy_form_payload(annotation, request)
+            update_annotation_conditional(
+                annotation, payload, current_model_key, current_case_data,
+            )
 
         annotation.save()
 
+        # Advance navigation
         new_flat = flat_index
         if action == "previous" and flat_index > 0:
             new_flat = flat_index - 1
@@ -522,28 +444,39 @@ def annotations_view(request):
         dermatologist.save()
 
         if is_json_request(request):
-            return JsonResponse(
-                {
-                    "ok": True,
-                    "action": action,
-                    "case_id": current_case_id,
-                    "model_key": current_model_key,
-                    "current_page": new_flat,
-                    "annotation_id": annotation.id,
-                    "saved_review_data": annotation.review_data,
-                }
-            )
+            return JsonResponse({
+                "ok": True,
+                "action": action,
+                "case_id": current_case_id,
+                "model_key": current_model_key,
+                "current_page": new_flat,
+                "annotation_id": annotation.id,
+            })
 
         return redirect("/annotations/?nav=1")
 
+    # ---- GET: build template context ----
     if current_interface == "unconditional":
-        saved_unconditional = annotation.review_data or {}
+        d1 = annotation.user_diagnosis_1 or _EMPTY_TC
+        d2 = annotation.user_diagnosis_2 or _EMPTY_TC
+        d3 = annotation.user_diagnosis_3 or _EMPTY_TC
+        ur = annotation.user_reasons or _EMPTY_TC
+        saved_unconditional = {
+            "user_diagnoses": [d1.get("text", ""), d2.get("text", ""), d3.get("text", "")],
+            "user_diagnoses_crops": [d1.get("crops", []), d2.get("crops", []), d3.get("crops", [])],
+            "user_reasons": ur.get("text", ""),
+            "user_reasons_crops": ur.get("crops", []),
+        }
         saved_model_review = {}
     else:
+        of = annotation.other_feedback or _EMPTY_TC
         saved_unconditional = {}
-        saved_model_review = (
-            (annotation.review_data or {}).get("models", {}).get(current_model_key, {})
-        )
+        saved_model_review = {
+            "diagnosis_feedback": annotation.diagnosis_feedback or [],
+            "description_feedback": annotation.description_feedback or [],
+            "other_feedback": of.get("text", ""),
+            "other_feedback_crops": of.get("crops", []),
+        }
 
     template = TEMPLATE_MAP.get(current_interface, "annotations_conditional.html")
 
@@ -570,7 +503,6 @@ def thank_you_view(request):
     login_id = request.session.get("login_id")
     if not login_id:
         return redirect("login")
-
     return render(request, "thank_you.html", {"login_id": login_id})
 
 

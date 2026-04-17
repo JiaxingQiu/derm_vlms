@@ -2,6 +2,9 @@ import json
 import re
 from pathlib import Path
 
+from django.views.decorators.cache import never_cache
+from django.views.decorators.csrf import ensure_csrf_cookie
+from django.middleware.csrf import rotate_token
 from django.conf import settings
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -275,6 +278,8 @@ def find_first_incomplete_page(pages, annotations_data, dermatologist):
 # Views
 # ---------------------------------------------------------------------------
 
+@never_cache
+@ensure_csrf_cookie
 def login_view(request):
     error_message = None
 
@@ -287,6 +292,8 @@ def login_view(request):
         else:
             Dermatologist.objects.get_or_create(login_id=login_id)
             request.session["login_id"] = login_id
+            # Issue a fresh CSRF token after login to avoid stale-page token mismatches.
+            rotate_token(request)
             return redirect("annotations")
 
     return render(request, "login.html", {"error_message": error_message})
@@ -298,6 +305,8 @@ TEMPLATE_MAP = {
 }
 
 
+@never_cache
+@ensure_csrf_cookie
 def annotations_view(request):
     login_id = request.session.get("login_id")
     if not login_id:
@@ -499,6 +508,7 @@ def annotations_view(request):
     return render(request, template, context)
 
 
+@never_cache
 def thank_you_view(request):
     login_id = request.session.get("login_id")
     if not login_id:

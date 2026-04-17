@@ -18,6 +18,9 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import path, include
+from django.views.decorators.cache import never_cache
+
+admin.site.login = never_cache(admin.site.login)
 
 urlpatterns = [
     path("admin/", admin.site.urls),

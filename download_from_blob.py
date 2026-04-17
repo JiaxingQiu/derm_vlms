@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlsplit, urlunsplit
 from typing import Any
 
 import yaml
@@ -50,12 +50,21 @@ def extract_container_name(container_url: str) -> str:
     return path_parts[0]
 
 
-def build_container_url(sas_url: str, sas_token: str | None) -> str:
-    if "?" in sas_url:
-        return sas_url
-    if sas_token:
-        return f"{sas_url.rstrip('?')}?{sas_token.lstrip('?')}"
-    return sas_url
+def build_container_url(sas_url: str, sas_token: str | None, container_name: str | None) -> str:
+    split = urlsplit(sas_url)
+    query = sas_token.lstrip("?") if sas_token else split.query
+
+    path_parts = [part for part in split.path.strip("/").split("/") if part]
+    if path_parts:
+        container_path = f"/{path_parts[0]}"
+    else:
+        if not container_name:
+            raise ValueError(
+                "Missing container name. Provide download.container_name when using an account-level azure.sas_url."
+            )
+        container_path = f"/{container_name.strip('/')}"
+
+    return urlunsplit((split.scheme, split.netloc, container_path, query, split.fragment))
 
 
 def build_container_client(config: dict[str, Any], container_name: str | None) -> ContainerClient:
@@ -67,7 +76,7 @@ def build_container_client(config: dict[str, Any], container_name: str | None) -
     sas_token = azure.get("sas_token")
 
     if sas_url:
-        return ContainerClient.from_container_url(build_container_url(sas_url, sas_token))
+        return ContainerClient.from_container_url(build_container_url(sas_url, sas_token, container_name))
 
     raise ValueError(
         "Provide azure.sas_url, optionally with azure.sas_token if the URL does not already include it."

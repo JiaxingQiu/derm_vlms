@@ -151,6 +151,8 @@ DJANGO_DB_PASSWORD_COMMAND=az account get-access-token --resource https://ossrdb
 
 Important: `.env.production` is not a shell script, so `$(...)` is not executed there.
 Use `DJANGO_DB_PASSWORD_COMMAND` instead of `DJANGO_DB_PASSWORD="$(...)"`.
+The app now resolves that command for each new PostgreSQL connection, which avoids
+reusing an expired access token from startup.
 
 Before using `DJANGO_DB_PASSWORD_COMMAND`, log in on the VM:
 

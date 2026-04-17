@@ -5,6 +5,7 @@ data_share/
 results/
 data.zip
 images.zip
+staticfiles/
 
 # Model weights & checkpoints
 *.pth
@@ -21,12 +22,14 @@ llama-13b/
 vicuna-13b-delta-v0/
 
 # Credentials & secrets
+configs/blob_config.yaml
 tokens.py
 tokens.txt
 ssh
 ssh_rivanna
 .env*
 !.env*.example
+revlm_dc/.env.production
 
 # Python / Jupyter
 __pycache__/

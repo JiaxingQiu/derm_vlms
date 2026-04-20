@@ -1,18 +1,25 @@
 import json
+import hashlib
 import re
+import secrets
+from datetime import timedelta
 from pathlib import Path
+from urllib.parse import urlencode
 
 from django.views.decorators.cache import never_cache
-from django.views.decorators.csrf import ensure_csrf_cookie
-from django.middleware.csrf import rotate_token
+from django.views.decorators.csrf import csrf_exempt
 from django.conf import settings
 from django.http import JsonResponse
-from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
+from django.shortcuts import redirect, render
+from django.utils import timezone
 
-from .models import Annotation, Dermatologist
+from .models import Annotation, Dermatologist, TabAuthSession
 
 
 _EMPTY_TC = {"text": "", "crops": []}
+AUTH_TOKEN_PARAM = "auth"
+AUTH_TOKEN_TTL = timedelta(hours=12)
 
 
 # ---------------------------------------------------------------------------
@@ -88,6 +95,69 @@ def parse_request_payload(request):
         payload["action"] = request.POST.get("action")
 
     return payload
+
+
+def hash_auth_token(raw_token):
+    return hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+
+
+def create_tab_auth_session(login_id):
+    dermatologist, _ = Dermatologist.objects.get_or_create(login_id=login_id)
+    raw_token = secrets.token_urlsafe(32)
+    TabAuthSession.objects.create(
+        dermatologist=dermatologist,
+        token_hash=hash_auth_token(raw_token),
+        expires_at=timezone.now() + AUTH_TOKEN_TTL,
+    )
+    return raw_token, dermatologist
+
+
+def extract_auth_token(request):
+    auth_header = request.headers.get("Authorization", "").strip()
+    if auth_header.startswith("Bearer "):
+        return auth_header[7:].strip()
+    return (
+        request.POST.get(AUTH_TOKEN_PARAM, "").strip()
+        or request.GET.get(AUTH_TOKEN_PARAM, "").strip()
+        or request.headers.get("X-Annotation-Auth", "").strip()
+    )
+
+
+def get_tab_auth_session(request):
+    raw_token = extract_auth_token(request)
+    if not raw_token:
+        return "", None
+
+    tab_session = (
+        TabAuthSession.objects.select_related("dermatologist")
+        .filter(
+            token_hash=hash_auth_token(raw_token),
+            revoked_at__isnull=True,
+            expires_at__gt=timezone.now(),
+        )
+        .first()
+    )
+    if tab_session is None:
+        return raw_token, None
+
+    TabAuthSession.objects.filter(pk=tab_session.pk).update(last_used_at=timezone.now())
+    return raw_token, tab_session
+
+
+def revoke_tab_auth_session(raw_token):
+    if not raw_token:
+        return
+
+    TabAuthSession.objects.filter(
+        token_hash=hash_auth_token(raw_token),
+        revoked_at__isnull=True,
+    ).update(revoked_at=timezone.now())
+
+
+def auth_url(view_name, raw_token, **query_params):
+    params = {AUTH_TOKEN_PARAM: raw_token}
+    params.update(query_params)
+    return f"{reverse(view_name)}?{urlencode(params)}"
 
 
 # ---------------------------------------------------------------------------
@@ -279,8 +349,12 @@ def find_first_incomplete_page(pages, annotations_data, dermatologist):
 # ---------------------------------------------------------------------------
 
 @never_cache
-@ensure_csrf_cookie
+@csrf_exempt
 def login_view(request):
+    raw_token, tab_session = get_tab_auth_session(request)
+    if tab_session is not None:
+        return redirect(auth_url("annotations", raw_token))
+
     error_message = None
 
     if request.method == "POST":
@@ -290,11 +364,8 @@ def login_view(request):
         if login_id not in valid_users:
             error_message = "invalid login id"
         else:
-            Dermatologist.objects.get_or_create(login_id=login_id)
-            request.session["login_id"] = login_id
-            # Issue a fresh CSRF token after login to avoid stale-page token mismatches.
-            rotate_token(request)
-            return redirect("annotations")
+            raw_token, _ = create_tab_auth_session(login_id)
+            return redirect(auth_url("annotations", raw_token))
 
     return render(request, "login.html", {"error_message": error_message})
 
@@ -306,15 +377,17 @@ TEMPLATE_MAP = {
 
 
 @never_cache
-@ensure_csrf_cookie
+@csrf_exempt
 def annotations_view(request):
-    login_id = request.session.get("login_id")
-    if not login_id:
+    raw_token, tab_session = get_tab_auth_session(request)
+    if tab_session is None:
         return redirect("login")
+
+    login_id = tab_session.dermatologist.login_id
 
     annotations_data = load_annotations_data()
     users_config = load_users_config()
-    dermatologist = get_object_or_404(Dermatologist, login_id=login_id)
+    dermatologist = tab_session.dermatologist
 
     user_case_ids = get_user_case_ids(users_config, login_id)
 
@@ -329,7 +402,7 @@ def annotations_view(request):
         return render(
             request,
             "annotations_conditional.html",
-            {"login_id": login_id, "no_cases": True},
+            {"login_id": login_id, "no_cases": True, "auth_token": raw_token},
         )
 
     interface_map = get_case_interface_map(users_config, login_id)
@@ -362,7 +435,7 @@ def annotations_view(request):
             if action == "done_yes":
                 dermatologist.is_done = True
                 dermatologist.save()
-                return redirect("thank_you")
+                return redirect(auth_url("thank_you", raw_token))
 
             if action == "done_no":
                 flat_index = total_pages - 1
@@ -376,16 +449,20 @@ def annotations_view(request):
                 dermatologist.current_case_index = ci
                 dermatologist.current_model_index = mi
                 dermatologist.save()
-                return redirect("/annotations/?nav=1")
+                return redirect(auth_url("annotations", raw_token, nav=1))
 
         return render(
             request,
             "annotations_conditional.html",
-            {"login_id": login_id, "show_done_confirmation": True},
+            {
+                "login_id": login_id,
+                "show_done_confirmation": True,
+                "auth_token": raw_token,
+            },
         )
 
     if dermatologist.is_done:
-        return redirect("thank_you")
+        return redirect(auth_url("thank_you", raw_token))
 
     # ---- Current page data ----
     flat_index = min(flat_index, total_pages - 1)
@@ -417,7 +494,7 @@ def annotations_view(request):
             dermatologist.current_model_index = 0
             dermatologist.is_done = False
             dermatologist.save()
-            return redirect("annotations")
+            return redirect(auth_url("annotations", raw_token))
 
         if current_interface == "unconditional":
             update_annotation_unconditional(annotation, payload)
@@ -460,9 +537,10 @@ def annotations_view(request):
                 "model_key": current_model_key,
                 "current_page": new_flat,
                 "annotation_id": annotation.id,
+                "redirect_url": auth_url("annotations", raw_token, nav=1),
             })
 
-        return redirect("/annotations/?nav=1")
+        return redirect(auth_url("annotations", raw_token, nav=1))
 
     # ---- GET: build template context ----
     if current_interface == "unconditional":
@@ -503,19 +581,27 @@ def annotations_view(request):
         "total_pages": total_pages,
         "has_previous": flat_index > 0,
         "has_next": flat_index < total_pages - 1,
+        "auth_token": raw_token,
     }
 
     return render(request, template, context)
 
 
 @never_cache
+@csrf_exempt
 def thank_you_view(request):
-    login_id = request.session.get("login_id")
-    if not login_id:
+    raw_token, tab_session = get_tab_auth_session(request)
+    if tab_session is None:
         return redirect("login")
-    return render(request, "thank_you.html", {"login_id": login_id})
+    return render(
+        request,
+        "thank_you.html",
+        {"login_id": tab_session.dermatologist.login_id, "auth_token": raw_token},
+    )
 
 
+@never_cache
+@csrf_exempt
 def logout_view(request):
-    request.session.flush()
+    revoke_tab_auth_session(extract_auth_token(request))
     return redirect("login")

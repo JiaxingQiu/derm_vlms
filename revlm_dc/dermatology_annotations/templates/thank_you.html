@@ -6,4 +6,5 @@
 <h1>Thank you for your participation</h1>
 <p>Your annotations have been recorded.</p>
 <p>Logged in as: {{ login_id }}</p>
+<p><a href="{% url 'logout' %}?auth={{ auth_token|urlencode }}">Logout</a></p>
 {% endblock %}

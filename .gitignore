@@ -41,6 +41,7 @@ __pycache__/
 
 # Logs
 log/
+*.log
 
 # Scratch / test files
 test*.ipynb

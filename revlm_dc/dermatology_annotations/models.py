@@ -1,4 +1,7 @@
+from datetime import timedelta
+
 from django.db import models
+from django.utils import timezone
 
 
 class Dermatologist(models.Model):
@@ -9,6 +12,10 @@ class Dermatologist(models.Model):
 
     def __str__(self):
         return self.login_id
+
+
+def _default_tab_session_expiry():
+    return timezone.now() + timedelta(hours=12)
 
 
 def _empty_text_crops():
@@ -54,3 +61,24 @@ class Annotation(models.Model):
     def __str__(self):
         label = self.model or "human"
         return f"{self.dermatologist.login_id} - {self.case_id} - {label}"
+
+
+class TabAuthSession(models.Model):
+    dermatologist = models.ForeignKey(
+        Dermatologist,
+        on_delete=models.CASCADE,
+        related_name="tab_sessions",
+    )
+    token_hash = models.CharField(max_length=64, unique=True)
+    expires_at = models.DateTimeField(default=_default_tab_session_expiry, db_index=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_used_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["dermatologist", "expires_at"]),
+        ]
+
+    def __str__(self):
+        return f"{self.dermatologist.login_id} tab session"

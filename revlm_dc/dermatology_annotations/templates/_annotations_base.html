@@ -8,7 +8,7 @@
     <h1>All Cases Reviewed</h1>
     <p>You have reached the end of the assigned cases.</p>
     <form method="post" class="done-form">
-        {% csrf_token %}
+        <input type="hidden" name="auth" value="{{ auth_token }}">
         <button type="submit" name="action" value="done_yes" class="btn btn-primary">Finish</button>
         <button type="submit" name="action" value="done_no" class="btn btn-outline-secondary">Go Back</button>
     </form>
@@ -28,12 +28,12 @@
         <div class="hctl">
             <span class="progress" id="progress">Page {{ current_page|add:1 }} / {{ total_pages }}</span>
             <span class="meta-line">{{ login_id }}</span>
-            <a href="{% url 'logout' %}" class="logout-link">Logout</a>
+            <a href="{% url 'logout' %}?auth={{ auth_token|urlencode }}" class="logout-link">Logout</a>
         </div>
     </header>
 
     <form method="post" id="annotation-form">
-        {% csrf_token %}
+        <input type="hidden" name="auth" value="{{ auth_token }}">
         <input type="hidden" name="action" id="form-action" value="save">
         <input type="hidden" name="review_data" id="review-data-input">
 

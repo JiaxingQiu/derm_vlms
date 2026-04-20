@@ -95,7 +95,6 @@ seed: 42
 max_lesions: 3
 enable_factors:
   - image_mode
-  - interface_type
 ```
 
 **After new predictions arrive:** re-parse, regenerate assignments, then run the server.
@@ -157,13 +156,13 @@ Available upon request.
 ## Models
 
 
-| Folder           | Model             | Base                                 | Params | Link                                                                                                    |
-| ---------------- | ----------------- | ------------------------------------ | ------ | ------------------------------------------------------------------------------------------------------- |
-| `skingpt/`       | SkinGPT-4         | BLIP-2 + LLaMA-2-13B-Chat            | ~14B   | [JoshuaChou2018/SkinGPT-4](https://github.com/JoshuaChou2018/SkinGPT-4)                                 |
-| `dermato_llama/` | DermatoLlama      | Llama-3.2-11B-Vision-Instruct + LoRA | ~11B   | [DermaVLM/DermatoLLama-full](https://huggingface.co/DermaVLM/DermatoLLama-full)                         |
-| `llava_derm/`    | LLaVA-Dermatology | LLaVA-1.5-7B                         | ~7B    | [Esperanto/llava-dermatology-7b-v1.5-hf](https://huggingface.co/Esperanto/llava-dermatology-7b-v1.5-hf) |
-| `medgemma/`      | MedGemma          | MedGemma-1.5-4B-IT                   | ~4B    | [google/medgemma-1.5-4b-it](https://huggingface.co/google/medgemma-1.5-4b-it)                           |
-| `gpt53/`         | GPT-5.3           | Azure OpenAI (proprietary)           | —      | Azure `gpt-5.3-chat` deployment                                                                         |
+| Folder                                | Model             | Base                                 | Params | Link                                                                                                    |
+| ------------------------------------- | ----------------- | ------------------------------------ | ------ | ------------------------------------------------------------------------------------------------------- |
+| `collect_ai_response/skingpt/`        | SkinGPT-4         | BLIP-2 + LLaMA-2-13B-Chat            | ~14B   | [JoshuaChou2018/SkinGPT-4](https://github.com/JoshuaChou2018/SkinGPT-4)                                 |
+| `collect_ai_response/dermato_llama/`  | DermatoLlama      | Llama-3.2-11B-Vision-Instruct + LoRA | ~11B   | [DermaVLM/DermatoLLama-full](https://huggingface.co/DermaVLM/DermatoLLama-full)                         |
+| `collect_ai_response/llava_derm/`     | LLaVA-Dermatology | LLaVA-1.5-7B                         | ~7B    | [Esperanto/llava-dermatology-7b-v1.5-hf](https://huggingface.co/Esperanto/llava-dermatology-7b-v1.5-hf) |
+| `collect_ai_response/medgemma/`       | MedGemma          | MedGemma-1.5-4B-IT                   | ~4B    | [google/medgemma-1.5-4b-it](https://huggingface.co/google/medgemma-1.5-4b-it)                           |
+| `collect_ai_response/gpt53/`          | GPT-5.3           | Azure OpenAI (proprietary)           | —      | Azure `gpt-5.3-chat` deployment                                                                         |
 
 
 Each model folder contains its own:
@@ -216,9 +215,10 @@ derm_vlms/
 ├── results/               # Model outputs + interface_share/ (by request)
 ├── res_eng/               # Interface engineering
 │   └── interface/         # HTML interface builder (notebook + assets)
-├── skingpt/               # SkinGPT-4
-├── dermato_llama/         # DermatoLlama
-├── llava_derm/            # LLaVA-Dermatology
-├── medgemma/              # MedGemma
-└── gpt53/                 # GPT-5.3 (Azure OpenAI)
+├── collect_ai_response/   # Model inference notebooks & utilities
+│   ├── skingpt/           # SkinGPT-4
+│   ├── dermato_llama/     # DermatoLlama
+│   ├── llava_derm/        # LLaVA-Dermatology
+│   ├── medgemma/          # MedGemma
+│   └── gpt53/             # GPT-5.3 (Azure OpenAI)
 ```

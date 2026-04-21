@@ -111,12 +111,6 @@ find dermatology_annotations/migrations -type d -name '__pycache__' -exec rm -rf
 python manage.py makemigrations dermatology_annotations
 python manage.py migrate
 
-# optional
-python manage.py createsuperuser
-
-python manage.py parsedata
-python manage.py generate_assignments --users user_a user_b --seed 42 --max-lesions 10 --enable-factors image_mode interface_type
-
 python manage.py runserver
 ```
 

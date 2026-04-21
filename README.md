@@ -97,6 +97,48 @@ enable_factors:
   - image_mode
 ```
 
+**In case there are modifications to the models, run the following codes**
+
+**WARNING:** Do NOT do it in production or all data will be lost. Do it only before any final deployment.
+
+Locally, we can reset the database 
+
+```bash
+rm -f db.sqlite3
+find dermatology_annotations/migrations -type f ! -name '__init__.py' -delete
+find dermatology_annotations/migrations -type d -name '__pycache__' -exec rm -rf {} +
+
+python manage.py makemigrations dermatology_annotations
+python manage.py migrate
+
+# optional
+python manage.py createsuperuser
+
+python manage.py parsedata
+python manage.py generate_assignments --users user_a user_b --seed 42 --max-lesions 10 --enable-factors image_mode interface_type
+
+python manage.py runserver
+```
+
+If we are using PostgreSQL, we can avoid resetting the database by updating any pending migrations
+
+```bash
+# if you changed models.py locally
+python manage.py makemigrations dermatology_annotations
+
+# apply pending migrations to postgres
+python manage.py migrate
+
+# optional checks
+python manage.py showmigrations
+```
+
+To reset the dabatase (AS A LAST RESOURCE) with the commands below, 
+
+```bash
+python manage.py reset_db
+```
+
 **After new predictions arrive:** re-parse, regenerate assignments, then run the server.
 
 ```bash

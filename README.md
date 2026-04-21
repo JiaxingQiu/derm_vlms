@@ -97,7 +97,7 @@ enable_factors:
   - image_mode
 ```
 
-**In case there are modifications to the models, run the following codes**
+**In case there are modifications to `models.py`, run the following codes**
 
 **WARNING:** Do NOT do it in production or all data will be lost. Do it only before any final deployment.
 

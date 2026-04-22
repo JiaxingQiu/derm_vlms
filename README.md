@@ -238,3 +238,21 @@ Follow the instructions from this tutorial to deploy the server on [Azure](https
 # Production Deployment
 
 Follow `revml_dc/DEPLOYMENT.md`.
+
+## Pulling Changes to Server
+
+You need to run the following command
+
+```bash
+git pull upstream main
+```
+
+## Pushing Changes from Server
+
+You need to run the following command
+
+```bash
+git add .
+git commit -m "name of commit"
+git push upstream main
+```

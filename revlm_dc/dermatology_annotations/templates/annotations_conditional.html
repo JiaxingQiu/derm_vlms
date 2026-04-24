@@ -5,7 +5,7 @@
 {{ saved_model_review|json_script:"saved-review-data" }}
 {% endblock %}
 
-{% block header_prompt %}Prompt to AI: You are an expert dermatologist. Please give the top 3 diagnoses in your differential, and provide reasoning for each diagnosis, in format: 1. [Diagnosis]: [Reasoning] ...{% endblock %}
+{% block header_prompt %}Prompt to AI: You are an expert dermatologist. Please give the top 3 diagnoses in your differential, and provide reasoning for each diagnosis{% endblock %}
 
 {% block right_panel %}
 <div class="task-sec">
@@ -56,10 +56,11 @@
 
 .reason-list{display:flex;flex-direction:column;gap:6px}
 .reason-row{display:flex;align-items:flex-start;gap:8px;padding:6px 8px;border:1px solid #e5e7eb;border-radius:6px;background:#fafafa}
-.reason-edited-badge{font-size:.62rem;color:#dc2626;font-weight:700;text-transform:uppercase;letter-spacing:.04em;align-self:center;flex-shrink:0}
 .reason-num{color:#9ca3af;font-size:.75rem;font-weight:600;min-width:18px;padding-top:3px}
 .reason-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
 .reason-text{font-size:.9rem;color:#374151;line-height:1.45;word-wrap:break-word;font-weight:400}
+.reason-text del{color:#b91c1c;text-decoration:line-through;background:#fee2e2;padding:0 1px;border-radius:2px;text-decoration-thickness:1.5px}
+.reason-text ins{color:#047857;text-decoration:underline;background:#d1fae5;padding:0 1px;border-radius:2px;text-decoration-thickness:1.5px}
 .reason-textarea{width:100%;padding:6px 10px;border:1px solid #c7d2fe;border-radius:5px;font-size:.9rem;font-family:inherit;resize:vertical;min-height:44px;line-height:1.45;background:#fff;color:#1f2937}
 .reason-textarea:focus{outline:none;border-color:#4338ca;box-shadow:0 0 0 2px rgba(67,56,202,.12)}
 .reason-actions{display:flex;gap:5px;flex-shrink:0;padding-top:2px}
@@ -83,6 +84,19 @@
     var modelData = JSON.parse(document.getElementById('model-data').textContent);
     var savedReview = JSON.parse(document.getElementById('saved-review-data').textContent || '{}');
     var modelKey = '{{ model_key }}';
+
+    // While a reasoning textarea is focused, clicks inside the image/zoom/
+    // evidence panel should NOT steal focus from it. Otherwise the textarea
+    // blur handler fires and closes the editor mid-crop. We preventDefault
+    // in the capture phase so the underlying click handlers (crop button,
+    // drag-to-crop, evidence × remove, etc.) still run.
+    document.addEventListener('mousedown', function (e) {
+        var active = document.activeElement;
+        if (!active || !active.classList || !active.classList.contains('reason-textarea')) return;
+        if (e.target.closest && e.target.closest('.left-panel')) {
+            e.preventDefault();
+        }
+    }, true);
 
     // AI diagnoses from parsedata.py: [{name, reasoning_sentences}]
     var aiDiagnoses = Array.isArray(modelData.diagnoses) ? modelData.diagnoses : [];
@@ -188,6 +202,83 @@
         return true;
     };
 
+    // --- Inline word-level diff (Google-Docs-style "suggestions") ---
+    // Tokenize into words, individual punctuation chars, whitespace runs,
+    // and [ev N] markers treated as atomic units.
+    function _diffTokenize(s) {
+        var tokens = [];
+        var i = 0, n = s.length;
+        while (i < n) {
+            var ch = s.charAt(i);
+            if (/\s/.test(ch)) {
+                var j = i;
+                while (j < n && /\s/.test(s.charAt(j))) j++;
+                tokens.push(s.substring(i, j));
+                i = j;
+            } else if (ch === '[' && /^\[ev\s+\d+\]/.test(s.substring(i))) {
+                var m = /^\[ev\s+\d+\]/.exec(s.substring(i));
+                tokens.push(m[0]);
+                i += m[0].length;
+            } else if (/[A-Za-z0-9_]/.test(ch)) {
+                var j = i;
+                while (j < n && /[A-Za-z0-9_']/.test(s.charAt(j))) j++;
+                tokens.push(s.substring(i, j));
+                i = j;
+            } else {
+                tokens.push(ch);
+                i++;
+            }
+        }
+        return tokens;
+    }
+
+    // Standard LCS diff over token arrays. Returns ops like
+    // [['=', 'abc '], ['-', 'bar'], ['+', 'baz']] with consecutive same-op
+    // tokens merged for compact rendering.
+    function _diffTokens(a, b) {
+        var n = a.length, m = b.length;
+        var dp = new Array(n + 1);
+        for (var i = 0; i <= n; i++) dp[i] = new Int32Array(m + 1);
+        for (var i = n - 1; i >= 0; i--) {
+            for (var j = m - 1; j >= 0; j--) {
+                if (a[i] === b[j]) dp[i][j] = dp[i + 1][j + 1] + 1;
+                else dp[i][j] = dp[i + 1][j] >= dp[i][j + 1] ? dp[i + 1][j] : dp[i][j + 1];
+            }
+        }
+        var ops = [];
+        function push(op, tok) {
+            if (ops.length && ops[ops.length - 1][0] === op) ops[ops.length - 1][1] += tok;
+            else ops.push([op, tok]);
+        }
+        var i = 0, j = 0;
+        while (i < n && j < m) {
+            if (a[i] === b[j]) { push('=', a[i]); i++; j++; }
+            else if (dp[i + 1][j] >= dp[i][j + 1]) { push('-', a[i]); i++; }
+            else { push('+', b[j]); j++; }
+        }
+        while (i < n) { push('-', a[i++]); }
+        while (j < m) { push('+', b[j++]); }
+        return ops;
+    }
+
+    function renderInlineDiffInto(container, original, edited) {
+        var ops = _diffTokens(_diffTokenize(original), _diffTokenize(edited));
+        ops.forEach(function (o) {
+            if (!o[1]) return;
+            if (o[0] === '=') {
+                container.appendChild(document.createTextNode(o[1]));
+            } else if (o[0] === '-') {
+                var del = document.createElement('del');
+                del.textContent = o[1];
+                container.appendChild(del);
+            } else {
+                var ins = document.createElement('ins');
+                ins.textContent = o[1];
+                container.appendChild(ins);
+            }
+        });
+    }
+
     // --- Render ---
     function renderReasonRow(diag, dIdx, edit, sIdx) {
         var row = document.createElement('div');
@@ -243,7 +334,12 @@
         } else {
             var textEl = document.createElement('div');
             textEl.className = 'reason-text';
-            textEl.textContent = edit.edited;
+            if (wasEdited) {
+                // Google-Docs-style inline diff: struck-through removals + underlined additions.
+                renderInlineDiffInto(textEl, edit.original, edit.edited);
+            } else {
+                textEl.textContent = edit.edited;
+            }
             body.appendChild(textEl);
         }
 
@@ -251,13 +347,6 @@
 
         var actions = document.createElement('div');
         actions.className = 'reason-actions';
-
-        if (wasEdited) {
-            var badge = document.createElement('span');
-            badge.className = 'reason-edited-badge';
-            badge.textContent = 'Edited';
-            actions.appendChild(badge);
-        }
 
         if (!edit.editorOpen) {
             var btnEdit = document.createElement('button');

@@ -199,6 +199,80 @@ main{max-width:none;margin:0;padding:8px 12px}
     var getFieldTarget = function () { return null; };
     var defaultFallbackField = null;
 
+    /* ===== Autosave ===== */
+    // Debounced JSON POST back to the same annotations URL with action=save.
+    // The Django view already has a JSON branch that persists the annotation
+    // without navigating. Armed only after the initial render() so that
+    // page-load hydration doesn't kick off a write.
+    var _autosaveArmed = false;
+    var _autosaveTimer = null;
+    var _autosaveInflight = false;
+    var AUTOSAVE_DELAY_MS = 500;
+
+    function _buildAutosaveBody() {
+        var raw = reviewDataInputEl.value || '{}';
+        var parsed;
+        try { parsed = JSON.parse(raw); } catch (e) { parsed = {}; }
+        parsed.action = 'save';
+        return JSON.stringify(parsed);
+    }
+
+    function _autosaveUrl() {
+        return window.location.pathname + window.location.search;
+    }
+
+    function _authTokenValue() {
+        var el = document.querySelector('input[name="auth"]');
+        return el ? el.value : '';
+    }
+
+    function doAutosave() {
+        _autosaveTimer = null;
+        if (_autosaveInflight) {
+            scheduleAutosave();
+            return;
+        }
+        _autosaveInflight = true;
+        fetch(_autosaveUrl(), {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Annotation-Auth': _authTokenValue(),
+                'Accept': 'application/json'
+            },
+            body: _buildAutosaveBody(),
+            credentials: 'same-origin'
+        }).then(function (resp) {
+            _autosaveInflight = false;
+            if (resp && resp.ok) showSaved();
+        }).catch(function () {
+            _autosaveInflight = false;
+        });
+    }
+
+    function scheduleAutosave() {
+        if (!_autosaveArmed) return;
+        if (_autosaveTimer) clearTimeout(_autosaveTimer);
+        _autosaveTimer = setTimeout(doAutosave, AUTOSAVE_DELAY_MS);
+    }
+
+    // Fire-and-forget save for tab close / reload / navigate-away. sendBeacon
+    // is queued by the browser even after the page begins unloading.
+    function flushAutosaveBeacon() {
+        if (!_autosaveArmed) return;
+        try {
+            syncHiddenPayload();
+            var body = _buildAutosaveBody();
+            var blob = new Blob([body], { type: 'application/json' });
+            var url = _autosaveUrl();
+            // Tack the auth token onto the URL so the beacon doesn't need
+            // custom headers (sendBeacon cannot set them).
+            var sep = url.indexOf('?') === -1 ? '?' : '&';
+            if (url.indexOf('auth=') === -1) url += sep + 'auth=' + encodeURIComponent(_authTokenValue());
+            navigator.sendBeacon(url, blob);
+        } catch (e) { /* best-effort */ }
+    }
+
     function getFieldCrops(fieldEl) { var t = getFieldTarget(fieldEl); return t ? t.getCrops() : []; }
     function setFieldCrops(fieldEl, crops) { var t = getFieldTarget(fieldEl); if (t) t.setCrops(crops); }
 
@@ -532,6 +606,11 @@ main{max-width:none;margin:0;padding:8px 12px}
                 return;
             }
             syncHiddenPayload();
+            // The form submit itself writes the latest state. Disarm autosave
+            // so neither a pending debounced POST nor the pagehide beacon
+            // races with (or undoes) the navigation submit.
+            _autosaveArmed = false;
+            if (_autosaveTimer) { clearTimeout(_autosaveTimer); _autosaveTimer = null; }
             actionInputEl.value = action;
             document.getElementById('annotation-form').submit();
         });
@@ -553,6 +632,10 @@ main{max-width:none;margin:0;padding:8px 12px}
     document.getElementById('btn-reset').onclick = function () {
         var ans = prompt('This will permanently delete ALL feedback for ALL cases.\nType RESET to confirm:');
         if (ans !== 'RESET') return;
+        // Critical: kill autosave BEFORE submitting so the pagehide beacon
+        // doesn't race with (and undo) the reset by re-saving current state.
+        _autosaveArmed = false;
+        if (_autosaveTimer) { clearTimeout(_autosaveTimer); _autosaveTimer = null; }
         actionInputEl.value = 'reset_all';
         document.getElementById('annotation-form').submit();
     };
@@ -566,6 +649,23 @@ main{max-width:none;margin:0;padding:8px 12px}
     resetView();
     window.addEventListener('resize', fitImage);
     render();
+
+    // Wrap syncHiddenPayload *after* the interface-specific JS block has
+    // reassigned it, so every existing call site automatically schedules an
+    // autosave. The initial render above runs with _autosaveArmed === false,
+    // so page-load hydration does not trigger a POST.
+    (function () {
+        var _origSync = syncHiddenPayload;
+        syncHiddenPayload = function () {
+            _origSync();
+            scheduleAutosave();
+        };
+    })();
+    _autosaveArmed = true;
+
+    // Flush the latest edits if the user closes the tab or reloads.
+    window.addEventListener('pagehide', flushAutosaveBeacon);
+    window.addEventListener('beforeunload', flushAutosaveBeacon);
 })();
 </script>
 {% endif %}

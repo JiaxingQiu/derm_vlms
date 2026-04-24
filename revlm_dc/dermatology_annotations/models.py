@@ -34,9 +34,16 @@ class Annotation(models.Model):
 
     # --- Conditional: AI response evaluation ---
     raw_response = models.TextField(blank=True, default="")
-    # [{text, label, feedback, crops: [{x,y,w,h},...]}]
+    # Per-diagnosis review entries. Each item:
+    #   {
+    #     "name": str,                          # AI diagnosis name
+    #     "label": "" | "correct" | "incorrect",  # "" or "correct" = accepted
+    #     "reasoning_edits": [                   # aligned 1:1 with AI sentences
+    #         {"original": str, "edited": str}
+    #     ],
+    #     "correct_differential": str           # required when label == "incorrect"
+    #   }
     diagnosis_feedback = models.JSONField(default=list, blank=True)
-    description_feedback = models.JSONField(default=list, blank=True)
     # {text, crops: [{x,y,w,h},...]}
     other_feedback = models.JSONField(default=_empty_text_crops, blank=True)
 

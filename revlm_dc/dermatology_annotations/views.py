@@ -169,29 +169,66 @@ _LABEL_MAP = {
     "no": "incorrect",
     "correct": "correct",
     "incorrect": "incorrect",
-    "maybe": "maybe",
 }
 
 
-def normalize_item_feedback(items):
-    """Normalise a list of per-item feedback dicts.
+def normalize_reasoning_edits(edits, ai_sentences):
+    """Align user edits with the AI's reasoning sentences.
 
-    Each item keeps {text, label, feedback, crops} with crops stored as
-    a per-item array of {x, y, w, h} rectangles so the UI can re-render
-    evidence thumbnails on reload.
+    Produces one entry per AI sentence: {original, edited, crops}. ``edited``
+    equals ``original`` when the user did not touch the sentence. ``crops``
+    is a list of {x, y, w, h} rectangles anchored to the case image.
     """
-    normalised = []
-    for item in items or []:
-        if not isinstance(item, dict):
-            continue
-        label = _LABEL_MAP.get(item.get("label") or item.get("status") or "", "")
-        normalised.append({
-            "text": item.get("text", ""),
-            "label": label,
-            "feedback": item.get("feedback", ""),
-            "crops": item.get("crops", []),
+    out = []
+    edits = edits or []
+    for idx, original in enumerate(ai_sentences or []):
+        entry = edits[idx] if idx < len(edits) and isinstance(edits[idx], dict) else {}
+        edited = entry.get("edited")
+        if edited is None:
+            edited = entry.get("text", original)
+        out.append({
+            "original": str(original),
+            "edited": str(edited if edited else original),
+            "crops": entry.get("crops") if isinstance(entry.get("crops"), list) else [],
         })
-    return normalised
+    return out
+
+
+def normalize_diagnosis_feedback(items, ai_diagnoses):
+    """Normalise the per-diagnosis review payload.
+
+    Each returned entry:
+        {
+            "name": str,                       # AI diagnosis name
+            "label": "" | "correct" | "incorrect",
+            "reasoning_edits": [{"original": str, "edited": str, "crops": [...]}, ...],
+            "correct_differential": str,
+            "correct_differential_crops": [{x,y,w,h}, ...],
+        }
+    ``ai_diagnoses`` is the list coming from the annotations_data.json
+    (``[{name, reasoning_sentences}]``) so we can always lock the schema
+    to what the AI produced and avoid drift between UI edits and source.
+    """
+    items = items or []
+    by_idx = {idx: item for idx, item in enumerate(items) if isinstance(item, dict)}
+
+    out = []
+    for idx, ai_d in enumerate(ai_diagnoses or []):
+        raw = by_idx.get(idx, {})
+        label = _LABEL_MAP.get(raw.get("label") or "", "")
+        reasoning_edits = normalize_reasoning_edits(
+            raw.get("reasoning_edits"),
+            ai_d.get("reasoning_sentences", []),
+        )
+        cd_crops = raw.get("correct_differential_crops")
+        out.append({
+            "name": ai_d.get("name", raw.get("name", "")),
+            "label": label,
+            "reasoning_edits": reasoning_edits,
+            "correct_differential": str(raw.get("correct_differential", "") or "").strip(),
+            "correct_differential_crops": cd_crops if isinstance(cd_crops, list) else [],
+        })
+    return out
 
 
 def _tc(text="", crops=None):
@@ -216,16 +253,15 @@ def _get_tc(source, key, default=None):
 def update_annotation_conditional(annotation, payload, model_key, case_data):
     """Populate *conditional* (AI evaluation) fields on an annotation."""
     model_info = case_data.get(model_key, {})
+    ai_diagnoses = model_info.get("diagnoses", [])
 
     annotation.model = model_key
     annotation.interface_type = "conditional"
     annotation.raw_response = model_info.get("raw_response", "")
 
-    annotation.diagnosis_feedback = normalize_item_feedback(
+    annotation.diagnosis_feedback = normalize_diagnosis_feedback(
         payload.get("diagnosis_feedback", annotation.diagnosis_feedback or []),
-    )
-    annotation.description_feedback = normalize_item_feedback(
-        payload.get("description_feedback", annotation.description_feedback or []),
+        ai_diagnoses,
     )
 
     other_text = payload.get("other_feedback", "")
@@ -313,16 +349,21 @@ def is_page_complete(annotation, model_key, case_data):
         return all_diags and has_reasons
 
     source = case_data.get(model_key, {})
-    total = len(source.get("diagnoses", [])) + len(source.get("descriptions", []))
-    if total == 0:
+    ai_diagnoses = source.get("diagnoses", [])
+    if not ai_diagnoses:
         return True
 
-    all_items = list(annotation.diagnosis_feedback or []) + list(annotation.description_feedback or [])
-    reviewed = sum(1 for item in all_items if item.get("label"))
-    for item in all_items:
-        if item.get("label") == "incorrect" and not (item.get("feedback") or "").strip():
+    feedback = annotation.diagnosis_feedback or []
+    if len(feedback) < len(ai_diagnoses):
+        return False
+
+    for item in feedback[: len(ai_diagnoses)]:
+        label = (item or {}).get("label") or ""
+        if label not in ("correct", "incorrect"):
             return False
-    return reviewed >= total
+        if label == "incorrect" and not (item.get("correct_differential") or "").strip():
+            return False
+    return True
 
 
 def find_first_incomplete_page(pages, annotations_data, dermatologist):
@@ -560,7 +601,6 @@ def annotations_view(request):
         saved_unconditional = {}
         saved_model_review = {
             "diagnosis_feedback": annotation.diagnosis_feedback or [],
-            "description_feedback": annotation.description_feedback or [],
             "other_feedback": of.get("text", ""),
             "other_feedback_crops": of.get("crops", []),
         }

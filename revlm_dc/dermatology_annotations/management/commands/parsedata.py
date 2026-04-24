@@ -21,13 +21,15 @@ from django.core.management.base import BaseCommand
 
 PROJECT_ROOT = Path(settings.BASE_DIR).parent
 
-from dermatology_annotations.parse import parse_response
+from dermatology_annotations.parse import parse_reason_response
 
 VLMS = {
-    "MedGemma": "results/medgemma_predictions_all.csv",
-    "GPT-5.3": "results/gpt53_predictions_all.csv",
-    "DermatoLlama": "results/dermato_llama_predictions_all.csv",
+    "MedGemma": "results/medgemma_predictions_reason.csv",
+    "GPT-5.3": "results/gpt53_predictions_reason.csv",
+    "DermatoLlama": "results/dermato_llama_predictions_reason.csv",
 }
+
+RESPONSE_COL = "reason_classify"
 
 STANDARD_MODES = {"photo", "dscope", "combined"}
 
@@ -99,10 +101,10 @@ class Command(BaseCommand):
             for model_name, df in vlm_frames.items():
                 if case_id not in df.index:
                     continue
-                raw = df.loc[case_id, "describe_then_classify"]
+                raw = df.loc[case_id, RESPONSE_COL]
                 if pd.isna(raw):
                     raw = ""
-                descriptions, diagnoses = parse_response(str(raw))
+                diagnoses = parse_reason_response(str(raw))
 
                 if diagnoses:
                     parse_stats[model_name]["matched"] += 1
@@ -112,7 +114,6 @@ class Command(BaseCommand):
                 case[model_name] = {
                     "raw_response": str(raw),
                     "diagnoses": diagnoses,
-                    "descriptions": descriptions,
                 }
 
             annotations[case_id] = case

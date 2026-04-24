@@ -5,7 +5,7 @@
 {{ saved_model_review|json_script:"saved-review-data" }}
 {% endblock %}
 
-{% block header_prompt %}Prompt to AI: You are an expert dermatologist. Please describe using dermatological terms to describe the appearance of this lesion. Please give the top 3 diagnoses in your differential.{% endblock %}
+{% block header_prompt %}Prompt to AI: You are an expert dermatologist. Please give the top 3 diagnoses in your differential, and provide reasoning for each diagnosis, in format: 1. [Diagnosis]: [Reasoning] ...{% endblock %}
 
 {% block right_panel %}
 <div class="task-sec">
@@ -19,15 +19,14 @@
             <div class="field-label">AI Diagnoses</div>
             <div class="diag-list" id="diag-list"></div>
         </div>
+    </div>
+</div>
 
-        <div class="field" id="desc-section">
-            <div class="field-label">AI Description</div>
-            <div class="desc-list" id="desc-list"></div>
-        </div>
-
-        <div class="field-label"><span style="font-weight:400;text-transform:none;letter-spacing:0;color:#9ca3af">(optional)</span></div>
+<div class="task-sec">
+    <div class="tc">
+        <div class="field-label">Other feedback <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#9ca3af">(optional)</span></div>
         <div class="survey" id="survey">
-            <textarea id="other-feedback" rows="4" placeholder="Other feedback (e.g., important details missing, the order of the diagnoses is wrong, or the predictive relationship between features is wrong...)"></textarea>
+            <textarea id="other-feedback" rows="4" placeholder="Other feedback (e.g., any missing details? is the order of the diagnoses corrent?)"></textarea>
             <div class="field-evidence" id="other-feedback-ev"></div>
         </div>
     </div>
@@ -35,36 +34,46 @@
 {% endblock %}
 
 {% block interface_css %}
-.diag-list,.desc-list{display:flex;flex-direction:column;gap:0;max-height:none;overflow-y:auto;border-radius:8px;padding-bottom:32px}
-.review-row{display:flex;align-items:flex-start;gap:6px;padding:4px 10px;border:1px solid #e2e8f0;border-bottom:none;background:#f8fafc;transition:background .15s}
-.diag-list>:first-child,.desc-list>:first-child{border-radius:8px 8px 0 0}
-.diag-list>:last-child,.desc-list>:last-child{border-bottom:1px solid #e2e8f0;border-radius:0 0 8px 8px}
-.diag-list>:only-child,.desc-list>:only-child{border-radius:8px;border-bottom:1px solid #e2e8f0}
-.review-row.rev-correct{background:#f0fdf4}
-.review-row.rev-maybe{background:#fffbeb}
-.review-row.rev-incorrect{background:#fef2f2}
-.rev-num{font-weight:600;color:#6b7280;min-width:18px;flex-shrink:0;font-size:.8rem}
-.rev-text{flex:1;font-size:.85rem;line-height:1.4;color:#334155}
-.rev-actions{display:flex;gap:4px;flex-shrink:0;padding-top:1px}
-.rev-btn{width:22px;height:22px;border-radius:5px;border:1px solid #d1d5db;background:#fff;cursor:pointer;font-size:.78rem;display:flex;align-items:center;justify-content:center;transition:all .15s}
-.rev-ok{color:#059669}
-.rev-ok:hover{background:#ecfdf5;border-color:#6ee7b7}
-.rev-ok.active{background:#059669;color:#fff;border-color:#059669}
-.rev-maybe{color:#d97706}
-.rev-maybe:hover{background:#fffbeb;border-color:#fcd34d}
-.rev-maybe.active{background:#d97706;color:#fff;border-color:#d97706}
-.rev-no{color:#dc2626}
-.rev-no:hover{background:#fef2f2;border-color:#fca5a5}
-.rev-no.active{background:#dc2626;color:#fff;border-color:#dc2626}
-.rev-btn[data-tip]{position:relative}
-.rev-btn[data-tip]:hover::after{content:attr(data-tip);position:absolute;top:calc(100% + 4px);left:50%;transform:translateX(-50%);background:#1e293b;color:#fff;font-size:.65rem;padding:2px 6px;border-radius:4px;white-space:nowrap;z-index:20;pointer-events:none}
-.rev-correction{padding:6px 14px 8px 44px;border:1px solid #e2e8f0;border-top:none;background:#fef2f2}
-.rev-correction input{width:100%;padding:6px 10px;border:1px solid #fca5a5;border-radius:6px;font-size:.88rem;font-family:inherit;background:#fff;color:#334155}
-.rev-correction input:focus{outline:none;border-color:#dc2626;box-shadow:0 0 0 2px rgba(220,38,38,.12)}
-.rev-correction input::placeholder{color:#9ca3af}
-.rev-correction-maybe{background:#fffbeb}
-.rev-correction-maybe input{border-color:#fcd34d}
-.rev-correction-maybe input:focus{border-color:#d97706;box-shadow:0 0 0 2px rgba(217,119,6,.12)}
+.diag-list{display:flex;flex-direction:column;gap:10px}
+.diag-card{border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc;overflow:hidden;transition:background .15s}
+.diag-card.lbl-incorrect{background:#fef2f2;border-color:#fecaca}
+.diag-head{display:flex;align-items:center;gap:8px;padding:8px 12px}
+.diag-num{font-weight:700;color:#475569;font-size:.9rem;min-width:20px}
+.diag-name{flex:1;font-size:.9rem;font-weight:700;color:#1f2937;line-height:1.4}
+.diag-actions{display:flex;gap:6px;flex-shrink:0}
+.diag-btn{width:30px;height:30px;border-radius:6px;border:1px solid #d1d5db;background:#fff;cursor:pointer;font-size:.9rem;display:flex;align-items:center;justify-content:center;transition:all .15s}
+.diag-ok{color:#059669}
+.diag-ok:hover{background:#ecfdf5;border-color:#6ee7b7}
+.diag-ok.active{background:#059669;color:#fff;border-color:#059669}
+.diag-no{color:#dc2626}
+.diag-no:hover{background:#fef2f2;border-color:#fca5a5}
+.diag-no.active{background:#dc2626;color:#fff;border-color:#dc2626}
+
+.diag-expand{padding:0 12px 12px 12px;border-top:1px dashed #fca5a5;background:#fff;display:none}
+.diag-card.lbl-incorrect .diag-expand{display:block}
+.diag-expand .sub-label{font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;color:#6b7280;font-weight:600;margin:10px 0 6px}
+.sub-label .req{color:#dc2626;font-weight:600;text-transform:none;letter-spacing:0;font-size:.68rem;margin-left:4px}
+
+.reason-list{display:flex;flex-direction:column;gap:6px}
+.reason-row{display:flex;align-items:flex-start;gap:8px;padding:6px 8px;border:1px solid #e5e7eb;border-radius:6px;background:#fafafa}
+.reason-edited-badge{font-size:.62rem;color:#dc2626;font-weight:700;text-transform:uppercase;letter-spacing:.04em;align-self:center;flex-shrink:0}
+.reason-num{color:#9ca3af;font-size:.75rem;font-weight:600;min-width:18px;padding-top:3px}
+.reason-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+.reason-text{font-size:.9rem;color:#374151;line-height:1.45;word-wrap:break-word;font-weight:400}
+.reason-textarea{width:100%;padding:6px 10px;border:1px solid #c7d2fe;border-radius:5px;font-size:.9rem;font-family:inherit;resize:vertical;min-height:44px;line-height:1.45;background:#fff;color:#1f2937}
+.reason-textarea:focus{outline:none;border-color:#4338ca;box-shadow:0 0 0 2px rgba(67,56,202,.12)}
+.reason-actions{display:flex;gap:5px;flex-shrink:0;padding-top:2px}
+.reason-btn{padding:3px 10px;border-radius:5px;border:1px solid #d1d5db;background:#fff;cursor:pointer;font-size:.72rem;color:#4b5563;transition:all .15s;display:flex;align-items:center;gap:3px}
+.reason-btn:hover{background:#f3f4f6;border-color:#9ca3af}
+.reason-btn.active{background:#4338ca;color:#fff;border-color:#4338ca}
+.reason-btn.revert{color:#b45309;border-color:#fcd34d;background:#fffbeb}
+.reason-btn.revert:hover{background:#fef3c7;border-color:#f59e0b}
+
+.correct-diff{margin-top:10px}
+.correct-diff textarea{width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:.9rem;font-family:inherit;resize:vertical;line-height:1.5;background:#fff;color:#1f2937}
+.correct-diff textarea:focus{outline:none;border-color:#2563eb;box-shadow:0 0 0 2px rgba(37,99,235,.15)}
+.correct-diff textarea::placeholder{color:#9ca3af}
+
 .survey{display:flex;flex-direction:column;gap:10px}
 .survey textarea{width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:.9rem;font-family:inherit;resize:vertical;min-height:60px;line-height:1.5}
 .survey textarea:focus{outline:none;border-color:#2563eb;box-shadow:0 0 0 2px rgba(37,99,235,.15)}
@@ -75,31 +84,45 @@
     var savedReview = JSON.parse(document.getElementById('saved-review-data').textContent || '{}');
     var modelKey = '{{ model_key }}';
 
-    var diagnoses = Array.isArray(modelData.diagnoses) ? modelData.diagnoses : [];
-    var descriptions = Array.isArray(modelData.descriptions) ? modelData.descriptions : [];
+    // AI diagnoses from parsedata.py: [{name, reasoning_sentences}]
+    var aiDiagnoses = Array.isArray(modelData.diagnoses) ? modelData.diagnoses : [];
 
     var otherFeedbackEl = document.getElementById('other-feedback');
     defaultFallbackField = otherFeedbackEl;
 
-    var state = {
-        diagnosis_feedback: makeItemFeedback(diagnoses, savedReview.diagnosis_feedback || []),
-        description_feedback: makeItemFeedback(descriptions, savedReview.description_feedback || []),
-        other_feedback: savedReview.other_feedback || '',
-        other_feedback_crops: Array.isArray(savedReview.other_feedback_crops) ? savedReview.other_feedback_crops : []
-    };
-
-    function makeItemFeedback(items, savedItems) {
-        return (items || []).map(function (text, index) {
-            var saved = (savedItems || [])[index] || {};
+    // --- Build state, hydrating from saved review when available ---
+    function buildDiagnosisState(aiList, saved) {
+        saved = Array.isArray(saved) ? saved : [];
+        return (aiList || []).map(function (aiD, dIdx) {
+            var savedD = saved[dIdx] || {};
+            var sentences = Array.isArray(aiD.reasoning_sentences) ? aiD.reasoning_sentences : [];
+            var savedEdits = Array.isArray(savedD.reasoning_edits) ? savedD.reasoning_edits : [];
+            var reasoningEdits = sentences.map(function (original, sIdx) {
+                var savedEdit = savedEdits[sIdx] || {};
+                return {
+                    original: String(original || ''),
+                    edited: typeof savedEdit.edited === 'string' ? savedEdit.edited : String(original || ''),
+                    crops: Array.isArray(savedEdit.crops) ? savedEdit.crops : [],
+                    editorOpen: false
+                };
+            });
             return {
-                text: String(text || '').trim(),
-                label: saved.label || '',
-                feedback: saved.feedback || '',
-                crops: Array.isArray(saved.crops) ? saved.crops : []
+                name: String(aiD.name || savedD.name || ''),
+                label: (savedD.label === 'correct' || savedD.label === 'incorrect') ? savedD.label : '',
+                reasoning_edits: reasoningEdits,
+                correct_differential: typeof savedD.correct_differential === 'string' ? savedD.correct_differential : '',
+                correct_differential_crops: Array.isArray(savedD.correct_differential_crops) ? savedD.correct_differential_crops : []
             };
         });
     }
 
+    var state = {
+        diagnosis_feedback: buildDiagnosisState(aiDiagnoses, savedReview.diagnosis_feedback || []),
+        other_feedback: savedReview.other_feedback || '',
+        other_feedback_crops: Array.isArray(savedReview.other_feedback_crops) ? savedReview.other_feedback_crops : []
+    };
+
+    // --- Field target routing (for crop/evidence system) ---
     getFieldTarget = function (fieldEl) {
         if (!fieldEl) return null;
         if (fieldEl.id === 'other-feedback') {
@@ -110,144 +133,284 @@
             };
         }
         var kind = fieldEl.dataset.kind;
-        var index = Number(fieldEl.dataset.index);
-        if (!Number.isInteger(index)) return null;
-        var list = kind === 'diag' ? state.diagnosis_feedback : kind === 'desc' ? state.description_feedback : null;
-        if (!list || !list[index]) return null;
-        return {
-            getCrops: function () { return list[index].crops || []; },
-            setCrops: function (c) { list[index].crops = c; },
-            updateText: function (v) { list[index].feedback = v; }
-        };
+        var dIdx = Number(fieldEl.dataset.diagIndex);
+        if (!Number.isInteger(dIdx) || !state.diagnosis_feedback[dIdx]) return null;
+        var diag = state.diagnosis_feedback[dIdx];
+        if (kind === 'correct-diff') {
+            return {
+                getCrops: function () { return diag.correct_differential_crops; },
+                setCrops: function (c) { diag.correct_differential_crops = c; },
+                updateText: function (v) { diag.correct_differential = v; }
+            };
+        }
+        if (kind === 'reason') {
+            var sIdx = Number(fieldEl.dataset.sentIndex);
+            if (!Number.isInteger(sIdx) || !diag.reasoning_edits[sIdx]) return null;
+            var edit = diag.reasoning_edits[sIdx];
+            return {
+                getCrops: function () { return edit.crops; },
+                setCrops: function (c) { edit.crops = c; },
+                updateText: function (v) { edit.edited = v; }
+            };
+        }
+        return null;
     };
 
+    // --- Sync hidden payload -> server ---
     syncHiddenPayload = function () {
         state.other_feedback = otherFeedbackEl.value;
         var payload = {
             model_name: modelKey,
-            diagnosis_feedback: state.diagnosis_feedback.map(function (item) {
-                return { text: item.text, label: item.label, feedback: item.feedback, crops: item.crops || [] };
-            }),
-            description_feedback: state.description_feedback.map(function (item) {
-                return { text: item.text, label: item.label, feedback: item.feedback, crops: item.crops || [] };
+            diagnosis_feedback: state.diagnosis_feedback.map(function (d) {
+                return {
+                    name: d.name,
+                    label: d.label,
+                    reasoning_edits: d.reasoning_edits.map(function (e) {
+                        return { original: e.original, edited: e.edited, crops: e.crops || [] };
+                    }),
+                    correct_differential: d.correct_differential,
+                    correct_differential_crops: d.correct_differential_crops || []
+                };
             }),
             other_feedback: state.other_feedback,
-            other_feedback_crops: state.other_feedback_crops || [],
-            raw_state: { diagnoses: diagnoses, descriptions: descriptions }
+            other_feedback_crops: state.other_feedback_crops || []
         };
         reviewDataInputEl.value = JSON.stringify(payload);
     };
 
+    // --- Completeness (mirror of server-side is_page_complete) ---
     isPageComplete = function () {
-        var total = state.diagnosis_feedback.length + state.description_feedback.length;
-        var reviewed = state.diagnosis_feedback.filter(function (i) { return i.label; }).length
-                     + state.description_feedback.filter(function (i) { return i.label; }).length;
-        if (total > 0 && reviewed < total) return false;
-        var ok = true;
-        state.diagnosis_feedback.concat(state.description_feedback).forEach(function (item) {
-            if (item.label === 'incorrect' && !item.feedback.trim()) ok = false;
-        });
-        return ok;
+        for (var i = 0; i < state.diagnosis_feedback.length; i++) {
+            var d = state.diagnosis_feedback[i];
+            if (d.label !== 'correct' && d.label !== 'incorrect') return false;
+            if (d.label === 'incorrect' && !(d.correct_differential || '').trim()) return false;
+        }
+        return true;
     };
 
-    function renderItemList(containerId, sectionId, items, prefix, numbered) {
-        var listEl = document.getElementById(containerId);
-        var sectionEl = document.getElementById(sectionId);
-        if (!items.length) { sectionEl.style.display = 'none'; return; }
-        sectionEl.style.display = '';
-        listEl.innerHTML = '';
+    // --- Render ---
+    function renderReasonRow(diag, dIdx, edit, sIdx) {
+        var row = document.createElement('div');
+        row.className = 'reason-row';
+        var wasEdited = edit.edited !== edit.original;
 
-        items.forEach(function (item, idx) {
-            var rowDiv = document.createElement('div');
-            rowDiv.className = 'review-row';
-            if (item.label) rowDiv.classList.add('rev-' + item.label);
+        var num = document.createElement('span');
+        num.className = 'reason-num';
+        num.textContent = (sIdx + 1) + '.';
+        row.appendChild(num);
 
-            if (numbered) {
-                var numEl = document.createElement('span');
-                numEl.className = 'rev-num';
-                numEl.textContent = (idx + 1) + '.';
-                rowDiv.appendChild(numEl);
+        var body = document.createElement('div');
+        body.className = 'reason-body';
+
+        var ta;                 // textarea element when in edit state
+
+        if (edit.editorOpen) {
+            ta = document.createElement('textarea');
+            ta.className = 'reason-textarea';
+            ta.dataset.kind = 'reason';
+            ta.dataset.diagIndex = String(dIdx);
+            ta.dataset.sentIndex = String(sIdx);
+            ta.value = edit.edited;
+            ta.rows = 2;
+            ta.addEventListener('input', function () {
+                edit.edited = ta.value;
+                syncFieldCrops(ta);
+                syncHiddenPayload();
+            });
+            // Clicking anywhere outside the textarea closes the editor
+            // (keeping the latest edited text). Buttons that should NOT
+            // close the editor prevent this by calling preventDefault on
+            // their own mousedown (so the textarea never loses focus).
+            ta.addEventListener('blur', function () {
+                edit.editorOpen = false;
+                render();
+            });
+            body.appendChild(ta);
+
+            // Autofocus the textarea as soon as it's mounted so that a click
+            // anywhere outside it will fire the blur handler above.
+            setTimeout(function () {
+                if (document.body.contains(ta)) {
+                    ta.focus();
+                    try { ta.setSelectionRange(ta.value.length, ta.value.length); } catch (_) {}
+                }
+            }, 0);
+
+            var evDiv = document.createElement('div');
+            evDiv.className = 'field-evidence';
+            body.appendChild(evDiv);
+            renderFieldEvidenceInto(evDiv, ta);
+        } else {
+            var textEl = document.createElement('div');
+            textEl.className = 'reason-text';
+            textEl.textContent = edit.edited;
+            body.appendChild(textEl);
+        }
+
+        row.appendChild(body);
+
+        var actions = document.createElement('div');
+        actions.className = 'reason-actions';
+
+        if (wasEdited) {
+            var badge = document.createElement('span');
+            badge.className = 'reason-edited-badge';
+            badge.textContent = 'Edited';
+            actions.appendChild(badge);
+        }
+
+        if (!edit.editorOpen) {
+            var btnEdit = document.createElement('button');
+            btnEdit.type = 'button';
+            btnEdit.className = 'reason-btn';
+            btnEdit.textContent = 'Edit';
+            btnEdit.onclick = function () {
+                edit.editorOpen = true;
+                render();
+            };
+            actions.appendChild(btnEdit);
+        }
+
+        if (wasEdited) {
+            var btnRevert = document.createElement('button');
+            btnRevert.type = 'button';
+            btnRevert.className = 'reason-btn revert';
+            btnRevert.title = 'Revert to AI original';
+            btnRevert.innerHTML = '&#x21BA;';
+            // Prevent the textarea from blurring (which would close the
+            // editor and detach this very button before click fires).
+            btnRevert.addEventListener('mousedown', function (e) { e.preventDefault(); });
+            btnRevert.onclick = function () {
+                edit.edited = edit.original;
+                edit.crops = [];
+                edit.editorOpen = false;
+                syncHiddenPayload();
+                render();
+            };
+            actions.appendChild(btnRevert);
+        }
+
+        row.appendChild(actions);
+
+        return row;
+    }
+
+    function renderDiagnosisCard(diag, dIdx) {
+        var card = document.createElement('div');
+        card.className = 'diag-card' + (diag.label ? ' lbl-' + diag.label : '');
+
+        // --- Head row (name + label buttons) ---
+        var head = document.createElement('div');
+        head.className = 'diag-head';
+
+        var numEl = document.createElement('span');
+        numEl.className = 'diag-num';
+        numEl.textContent = (dIdx + 1) + '.';
+        head.appendChild(numEl);
+
+        var nameEl = document.createElement('span');
+        nameEl.className = 'diag-name';
+        nameEl.textContent = diag.name;
+        head.appendChild(nameEl);
+
+        var actions = document.createElement('div');
+        actions.className = 'diag-actions';
+
+        var btnOk = document.createElement('button');
+        btnOk.type = 'button';
+        btnOk.className = 'diag-btn diag-ok' + (diag.label === 'correct' ? ' active' : '');
+        btnOk.innerHTML = '&#x2713;';
+        btnOk.onclick = function () {
+            diag.label = diag.label === 'correct' ? '' : 'correct';
+            if (diag.label === 'correct') {
+                // Clicking correct discards any drafted correction state.
+                diag.correct_differential = '';
+                diag.correct_differential_crops = [];
+                diag.reasoning_edits.forEach(function (e) {
+                    e.edited = e.original;
+                    e.crops = [];
+                    e.editorOpen = false;
+                });
             }
+            syncHiddenPayload();
+            render();
+        };
+        actions.appendChild(btnOk);
 
-            var textEl = document.createElement('span');
-            textEl.className = 'rev-text';
-            textEl.textContent = item.text;
-            rowDiv.appendChild(textEl);
+        var btnNo = document.createElement('button');
+        btnNo.type = 'button';
+        btnNo.className = 'diag-btn diag-no' + (diag.label === 'incorrect' ? ' active' : '');
+        btnNo.innerHTML = '&#x2717;';
+        btnNo.onclick = function () {
+            diag.label = diag.label === 'incorrect' ? '' : 'incorrect';
+            syncHiddenPayload();
+            render();
+        };
+        actions.appendChild(btnNo);
 
-            var actions = document.createElement('div');
-            actions.className = 'rev-actions';
+        head.appendChild(actions);
+        card.appendChild(head);
 
-            var clearCorrection = function () { item.feedback = ''; item.crops = []; };
+        // --- Expanded sub-panel (only when incorrect) ---
+        var exp = document.createElement('div');
+        exp.className = 'diag-expand';
 
-            var btnOk = document.createElement('button');
-            btnOk.type = 'button';
-            btnOk.className = 'rev-btn rev-ok' + (item.label === 'correct' ? ' active' : '');
-            btnOk.innerHTML = '&#x2713;';
-            btnOk.dataset.tip = 'Correct';
-            btnOk.onclick = function () {
-                item.label = item.label === 'correct' ? '' : 'correct';
-                clearCorrection();
-                syncHiddenPayload(); render();
-            };
+        if (diag.reasoning_edits.length) {
+            var rLabel = document.createElement('div');
+            rLabel.className = 'sub-label';
+            rLabel.textContent = 'AI reasoning';
+            exp.appendChild(rLabel);
 
-            var btnNo = document.createElement('button');
-            btnNo.type = 'button';
-            btnNo.className = 'rev-btn rev-no' + (item.label === 'incorrect' ? ' active' : '');
-            btnNo.innerHTML = '&#x2717;';
-            btnNo.dataset.tip = 'Incorrect';
-            btnNo.onclick = function () {
-                var was = item.label === 'incorrect';
-                item.label = was ? '' : 'incorrect';
-                if (was) clearCorrection();
-                syncHiddenPayload(); render();
-            };
+            var rList = document.createElement('div');
+            rList.className = 'reason-list';
+            diag.reasoning_edits.forEach(function (edit, sIdx) {
+                rList.appendChild(renderReasonRow(diag, dIdx, edit, sIdx));
+            });
+            exp.appendChild(rList);
+        }
 
-            var btnMaybe = document.createElement('button');
-            btnMaybe.type = 'button';
-            btnMaybe.className = 'rev-btn rev-maybe' + (item.label === 'maybe' ? ' active' : '');
-            btnMaybe.innerHTML = '?';
-            btnMaybe.dataset.tip = 'Maybe';
-            btnMaybe.onclick = function () {
-                var was = item.label === 'maybe';
-                item.label = was ? '' : 'maybe';
-                if (was) clearCorrection();
-                syncHiddenPayload(); render();
-            };
+        var cdWrap = document.createElement('div');
+        cdWrap.className = 'correct-diff';
 
-            actions.appendChild(btnOk);
-            actions.appendChild(btnNo);
-            actions.appendChild(btnMaybe);
-            rowDiv.appendChild(actions);
-            listEl.appendChild(rowDiv);
-
-            if (item.label === 'incorrect' || item.label === 'maybe') {
-                var corrDiv = document.createElement('div');
-                corrDiv.className = 'rev-correction' + (item.label === 'maybe' ? ' rev-correction-maybe' : '');
-                var inp = document.createElement('input');
-                inp.type = 'text';
-                inp.placeholder = item.label === 'maybe' ? 'Why? (optional)' : 'Why? (required)';
-                inp.value = item.feedback || '';
-                inp.dataset.kind = prefix === 'diag' ? 'diag' : 'desc';
-                inp.dataset.index = String(idx);
-                inp.oninput = function () {
-                    item.feedback = inp.value;
-                    syncFieldCrops(inp);
-                    syncHiddenPayload();
-                };
-                corrDiv.appendChild(inp);
-                var evDiv = document.createElement('div');
-                evDiv.className = 'field-evidence';
-                corrDiv.appendChild(evDiv);
-                renderFieldEvidenceInto(evDiv, inp);
-                listEl.appendChild(corrDiv);
-            }
+        var cdTa = document.createElement('textarea');
+        cdTa.rows = 1;
+        cdTa.placeholder = 'What is the correct differential (required)?';
+        cdTa.dataset.kind = 'correct-diff';
+        cdTa.dataset.diagIndex = String(dIdx);
+        cdTa.value = diag.correct_differential;
+        cdTa.addEventListener('input', function () {
+            diag.correct_differential = cdTa.value;
+            syncFieldCrops(cdTa);
+            syncHiddenPayload();
         });
+        cdWrap.appendChild(cdTa);
+
+        var cdEv = document.createElement('div');
+        cdEv.className = 'field-evidence';
+        cdWrap.appendChild(cdEv);
+
+        exp.appendChild(cdWrap);
+        card.appendChild(exp);
+
+        // Defer evidence render until element is in the DOM.
+        setTimeout(function () { renderFieldEvidenceInto(cdEv, cdTa); }, 0);
+
+        return card;
     }
 
     render = function () {
         hideNavWarning();
-        renderItemList('diag-list', 'diag-section', state.diagnosis_feedback, 'diag', true);
-        renderItemList('desc-list', 'desc-section', state.description_feedback, 'desc', false);
+        var listEl = document.getElementById('diag-list');
+        var sectionEl = document.getElementById('diag-section');
+        if (!state.diagnosis_feedback.length) {
+            sectionEl.style.display = 'none';
+        } else {
+            sectionEl.style.display = '';
+            listEl.innerHTML = '';
+            state.diagnosis_feedback.forEach(function (diag, dIdx) {
+                listEl.appendChild(renderDiagnosisCard(diag, dIdx));
+            });
+        }
         renderFieldEvidenceInto(document.getElementById('other-feedback-ev'), otherFeedbackEl);
         syncHiddenPayload();
     };

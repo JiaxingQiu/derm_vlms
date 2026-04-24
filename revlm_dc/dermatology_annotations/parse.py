@@ -168,3 +168,86 @@ def parse_response(text):
     descriptions = split_sentences(desc_clean)
     diagnoses = parse_diagnoses(diag_clean)
     return descriptions, diagnoses
+
+
+_REASONING_LABEL = re.compile(
+    r"^\s*(?:reasoning|rationale|explanation|why|justification)\s*[:\-–—]\s*",
+    re.IGNORECASE,
+)
+_LEADING_BULLET = re.compile(r"^\s*(?:[*•\-–—\u2022]\s*)+")
+_NAME_REASON_SPLIT = re.compile(r"\s*[:\-–—]\s+")
+# Reason-format responses usually begin with "1. ..." (possibly after a short
+# preamble). If we detect that shape anywhere near the top we should parse the
+# whole text as the diagnosis list rather than relying on split_response.
+_REASON_LIST_START = re.compile(r"(?:^|\n)\s*1[.)]\s+", re.MULTILINE)
+
+
+def _split_name_and_reasoning(raw_item):
+    """Split a single parsed item into (name, reasoning_text).
+
+    Handles shapes like:
+        "**Basal Cell Carcinoma (BCC):** **Reasoning:** The image shows..."
+        "Basal Cell Carcinoma: The lesion exhibits..."
+        "Nevus - The lesion is small..."
+        "Basal Cell Carcinoma\\n    * Reasoning: ..."
+    """
+    if not raw_item:
+        return "", ""
+
+    name_part, _, rest = raw_item.partition("\n")
+    name_part = name_part.strip()
+    rest = rest.strip()
+
+    m = _NAME_REASON_SPLIT.search(name_part)
+    if m:
+        inline_reasoning = name_part[m.end():].strip()
+        name_part = name_part[: m.start()].strip()
+        if inline_reasoning:
+            rest = (inline_reasoning + ("\n" + rest if rest else "")).strip()
+
+    name = _extract_name(name_part)
+    name = name.rstrip(":,;. ").strip()
+
+    rest_lines = []
+    for ln in rest.splitlines():
+        ln = _LEADING_BULLET.sub("", ln).strip()
+        ln = _REASONING_LABEL.sub("", ln).strip()
+        if ln:
+            rest_lines.append(ln)
+    reasoning = " ".join(rest_lines).strip()
+    reasoning = _REASONING_LABEL.sub("", reasoning).strip()
+    return name, reasoning
+
+
+def parse_reason_response(text, max_items=3):
+    """Parse a reason-format VLM response into structured diagnoses.
+
+    Returns a list of dicts:
+        [{"name": str, "reasoning_sentences": list[str]}, ...]
+    """
+    if not text:
+        return []
+
+    # Reason-format responses usually begin with "1. ..." directly. When we see
+    # that shape early in the text, parse the whole thing as a numbered list
+    # instead of using split_response (which has fuzzy mid-sentence patterns
+    # that can mis-split reasoning paragraphs).
+    list_match = _REASON_LIST_START.search(text)
+    if list_match and list_match.start() < 400:
+        diag_raw = text
+    else:
+        _, diag_raw = split_response(text)
+        if not diag_raw:
+            diag_raw = text
+
+    diag_clean = clean_markdown(diag_raw)
+    items = parse_diagnoses(diag_clean)
+
+    parsed = []
+    for raw_item in items[:max_items]:
+        name, reasoning = _split_name_and_reasoning(raw_item)
+        if not name:
+            continue
+        sentences = split_sentences(reasoning) if reasoning else []
+        parsed.append({"name": name, "reasoning_sentences": sentences})
+    return parsed

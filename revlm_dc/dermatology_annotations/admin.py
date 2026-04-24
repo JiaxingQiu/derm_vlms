@@ -85,8 +85,8 @@ class AnnotationAdmin(admin.ModelAdmin):
             ]
             filled = [d for d in diags if d.strip()]
             return f"{len(filled)} diagnoses" if filled else ""
-        items = list(obj.diagnosis_feedback or []) + list(obj.description_feedback or [])
-        reviewed = sum(1 for i in items if i.get("label"))
+        items = obj.diagnosis_feedback or []
+        reviewed = sum(1 for i in items if i.get("label") in ("correct", "incorrect"))
         return f"{reviewed}/{len(items)} reviewed" if items else ""
     short_feedback.short_description = "feedback"
 
@@ -157,10 +157,21 @@ class DermatologistAdmin(admin.ModelAdmin):
     def export_csv_view(self, request):
         """Export all annotations in the unified CSV format.
 
-        Columns mirror the old static CSV (id, model, raw_response,
-        diagnosis_feedback, description_feedback, other_feedback) plus new
-        unconditional columns (user_diagnosis_1/2/3, user_reasons).
-        Crops are inlined into text as [crop:{...}].
+        Conditional rows export the new reason-based schema:
+            diagnosis_feedback JSON = [
+                {
+                    "name": str,
+                    "label": "correct" | "incorrect" | "",
+                    "reasoning_edits": [
+                        {"original": str, "edited": str, "edits_made": bool}
+                    ],
+                    "correct_differential": str
+                }, ...
+            ]
+        Crops from ``reasoning_edits[*].crops`` and
+        ``correct_differential_crops`` are inlined into the corresponding
+        text as ``[crop:{...}]`` markers.
+        Unconditional rows keep user_diagnosis_1/2/3 and user_reasons.
         """
         response = HttpResponse(content_type="text/csv; charset=utf-8")
         response["Content-Disposition"] = 'attachment; filename="annotations_export.csv"'
@@ -174,7 +185,6 @@ class DermatologistAdmin(admin.ModelAdmin):
             "interface_type",
             "raw_response",
             "diagnosis_feedback",
-            "description_feedback",
             "other_feedback",
             "user_diagnosis_1",
             "user_diagnosis_2",
@@ -193,26 +203,36 @@ class DermatologistAdmin(admin.ModelAdmin):
 
         for ann in annotations:
             diag_fb_export = ""
-            desc_fb_export = ""
             other_fb_export = ""
             ud1 = ud2 = ud3 = ur = ""
 
             if ann.interface_type == "conditional":
                 diag_items = []
                 for item in ann.diagnosis_feedback or []:
-                    entry = {"text": item.get("text", ""), "label": item.get("label", "")}
-                    if item.get("label") == "incorrect" and item.get("feedback"):
-                        entry["feedback"] = inline_crops(item["feedback"], item.get("crops", []))
-                    diag_items.append(entry)
-                desc_items = []
-                for item in ann.description_feedback or []:
-                    entry = {"text": item.get("text", ""), "label": item.get("label", "")}
-                    if item.get("label") == "incorrect" and item.get("feedback"):
-                        entry["feedback"] = inline_crops(item["feedback"], item.get("crops", []))
-                    desc_items.append(entry)
+                    label = item.get("label", "")
+                    edits_out = []
+                    for edit in item.get("reasoning_edits") or []:
+                        original = edit.get("original", "")
+                        edited = edit.get("edited", original)
+                        edits_out.append({
+                            "original": original,
+                            "edited": inline_crops(edited, edit.get("crops", [])),
+                            "edits_made": (edited or "") != (original or ""),
+                        })
+                    correct_diff = ""
+                    if label == "incorrect":
+                        correct_diff = inline_crops(
+                            item.get("correct_differential", ""),
+                            item.get("correct_differential_crops", []),
+                        )
+                    diag_items.append({
+                        "name": item.get("name", ""),
+                        "label": label,
+                        "reasoning_edits": edits_out,
+                        "correct_differential": correct_diff,
+                    })
 
                 diag_fb_export = json.dumps(diag_items, ensure_ascii=False) if diag_items else ""
-                desc_fb_export = json.dumps(desc_items, ensure_ascii=False) if desc_items else ""
                 other_fb_export = inline_tc(ann.other_feedback)
             else:
                 ud1 = inline_tc(ann.user_diagnosis_1)
@@ -227,7 +247,6 @@ class DermatologistAdmin(admin.ModelAdmin):
                 ann.interface_type,
                 ann.raw_response,
                 diag_fb_export,
-                desc_fb_export,
                 other_fb_export,
                 ud1,
                 ud2,

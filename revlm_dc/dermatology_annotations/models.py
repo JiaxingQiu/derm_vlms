@@ -30,7 +30,11 @@ class Annotation(models.Model):
     )
     case_id = models.CharField(max_length=100)
     model = models.CharField(max_length=100, blank=True, default="")
-    interface_type = models.CharField(max_length=20, default="conditional")
+
+    # NOTE: ``interface_type`` was a CharField here in earlier revisions.
+    # It has been retired: routing is config-driven (``users.yaml`` →
+    # ``get_case_interface_map`` in views.py), so persisting the same
+    # value on every Annotation row was redundant.
 
     # --- Conditional: AI response evaluation ---
     raw_response = models.TextField(blank=True, default="")
@@ -58,12 +62,10 @@ class Annotation(models.Model):
     # {text, crops: [{x,y,w,h},...]}
     other_feedback = models.JSONField(default=_empty_text_crops, blank=True)
 
-    # --- Unconditional: human independent assessment ---
-    # Each is {text, crops: [{x,y,w,h},...]}
-    user_diagnosis_1 = models.JSONField(default=_empty_text_crops, blank=True)
-    user_diagnosis_2 = models.JSONField(default=_empty_text_crops, blank=True)
-    user_diagnosis_3 = models.JSONField(default=_empty_text_crops, blank=True)
-    user_reasons = models.JSONField(default=_empty_text_crops, blank=True)
+    # NOTE: The unconditional (human-only assessment) interface has been
+    # retired. The template, routing, and ``interface_type`` field are kept
+    # so the flow can be revived later, but no data is persisted for it
+    # anymore. See migrations/0004_drop_unconditional_fields.py.
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

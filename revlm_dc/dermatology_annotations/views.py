@@ -303,7 +303,6 @@ def update_annotation_conditional(annotation, payload, model_key, case_data):
     ai_diagnoses = model_info.get("diagnoses", [])
 
     annotation.model = model_key
-    annotation.interface_type = "conditional"
     annotation.raw_response = model_info.get("raw_response", "")
 
     incoming = payload.get(
@@ -322,45 +321,12 @@ def update_annotation_conditional(annotation, payload, model_key, case_data):
         annotation.other_feedback = dict(_EMPTY_TC)
 
 
-def update_annotation_unconditional(annotation, payload):
-    """Populate *unconditional* (human-only) fields on an annotation."""
-    annotation.interface_type = "unconditional"
-    annotation.model = ""
-
-    existing = {
-        "user_diagnoses": [
-            (annotation.user_diagnosis_1 or _EMPTY_TC).get("text", ""),
-            (annotation.user_diagnosis_2 or _EMPTY_TC).get("text", ""),
-            (annotation.user_diagnosis_3 or _EMPTY_TC).get("text", ""),
-        ],
-        "user_diagnoses_crops": [
-            (annotation.user_diagnosis_1 or _EMPTY_TC).get("crops", []),
-            (annotation.user_diagnosis_2 or _EMPTY_TC).get("crops", []),
-            (annotation.user_diagnosis_3 or _EMPTY_TC).get("crops", []),
-        ],
-        "user_reasons": (annotation.user_reasons or _EMPTY_TC).get("text", ""),
-        "user_reasons_crops": (annotation.user_reasons or _EMPTY_TC).get("crops", []),
-    }
-
-    diags = payload.get("user_diagnoses", existing["user_diagnoses"])
-    diag_crops = payload.get("user_diagnoses_crops", existing["user_diagnoses_crops"])
-
-    annotation.user_diagnosis_1 = _tc(
-        diags[0] if len(diags) > 0 else "",
-        diag_crops[0] if len(diag_crops) > 0 else [],
-    )
-    annotation.user_diagnosis_2 = _tc(
-        diags[1] if len(diags) > 1 else "",
-        diag_crops[1] if len(diag_crops) > 1 else [],
-    )
-    annotation.user_diagnosis_3 = _tc(
-        diags[2] if len(diags) > 2 else "",
-        diag_crops[2] if len(diag_crops) > 2 else [],
-    )
-    annotation.user_reasons = _tc(
-        payload.get("user_reasons", existing["user_reasons"]),
-        payload.get("user_reasons_crops", existing["user_reasons_crops"]),
-    )
+# NOTE: ``update_annotation_unconditional`` was removed when the
+# unconditional (human-only) flow was retired. The template and routing
+# remain so the interface can be rendered, but no result fields are
+# persisted. To revive: restore this function + the four ``user_*``
+# fields on :class:`Annotation` and re-add the dispatch in
+# ``annotations_view``'s POST branch.
 
 
 # ---------------------------------------------------------------------------
@@ -386,17 +352,11 @@ def is_page_complete(annotation, model_key, case_data):
     if annotation is None:
         return False
 
+    # Unconditional (human-only) pages are retired and persist no data.
+    # If one is ever rendered (the template + routing are still present),
+    # it has nothing to gate on, so treat it as auto-complete.
     if model_key is None:
-        diags = [
-            (annotation.user_diagnosis_1 or _EMPTY_TC).get("text", ""),
-            (annotation.user_diagnosis_2 or _EMPTY_TC).get("text", ""),
-            (annotation.user_diagnosis_3 or _EMPTY_TC).get("text", ""),
-        ]
-        all_diags = all(d.strip() for d in diags)
-        has_reasons = bool(
-            (annotation.user_reasons or _EMPTY_TC).get("text", "").strip()
-        )
-        return all_diags and has_reasons
+        return True
 
     source = case_data.get(model_key, {})
     ai_diagnoses = source.get("diagnoses", [])
@@ -571,7 +531,6 @@ def annotations_view(request):
         dermatologist=dermatologist,
         case_id=current_case_id,
         model=current_model_key or "",
-        defaults={"interface_type": current_interface},
     )
 
     # Stamp the first time the user lands on this (case, model) page.
@@ -594,9 +553,9 @@ def annotations_view(request):
             dermatologist.save()
             return redirect(auth_url("annotations", raw_token))
 
-        if current_interface == "unconditional":
-            update_annotation_unconditional(annotation, payload)
-        else:
+        # The unconditional flow is retired: it has no persistence layer.
+        # Conditional pages handle the only saved schema.
+        if current_interface != "unconditional":
             update_annotation_conditional(
                 annotation, payload, current_model_key, current_case_data,
             )
@@ -646,21 +605,14 @@ def annotations_view(request):
         return redirect(auth_url("annotations", raw_token, nav=1))
 
     # ---- GET: build template context ----
+    # The unconditional flow no longer persists data; the template still
+    # renders so it can be revived later, but ``saved_unconditional`` is
+    # always empty.
+    saved_unconditional = {}
     if current_interface == "unconditional":
-        d1 = annotation.user_diagnosis_1 or _EMPTY_TC
-        d2 = annotation.user_diagnosis_2 or _EMPTY_TC
-        d3 = annotation.user_diagnosis_3 or _EMPTY_TC
-        ur = annotation.user_reasons or _EMPTY_TC
-        saved_unconditional = {
-            "user_diagnoses": [d1.get("text", ""), d2.get("text", ""), d3.get("text", "")],
-            "user_diagnoses_crops": [d1.get("crops", []), d2.get("crops", []), d3.get("crops", [])],
-            "user_reasons": ur.get("text", ""),
-            "user_reasons_crops": ur.get("crops", []),
-        }
         saved_model_review = {}
     else:
         of = annotation.other_feedback or _EMPTY_TC
-        saved_unconditional = {}
         saved_model_review = {
             "diagnosis_feedback": _merge_review_from_fields(annotation),
             "other_feedback": of.get("text", ""),
@@ -675,7 +627,6 @@ def annotations_view(request):
         "case_data": current_case_data,
         "model_key": current_model_key,
         "model_data": current_model_data,
-        "interface_type": current_interface,
         "annotation": annotation,
         "saved_model_review": saved_model_review,
         "saved_unconditional": saved_unconditional,

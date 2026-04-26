@@ -18,9 +18,6 @@ from .views import (
     load_users_config,
 )
 
-_EMPTY_TC = {"text": "", "crops": []}
-
-
 def load_annotations_data():
     json_path = Path(settings.BASE_DIR) / "data" / "annotations_data.json"
     with open(json_path, "r", encoding="utf-8") as f:
@@ -55,7 +52,6 @@ class AnnotationInline(admin.TabularInline):
     fields = (
         "case_id",
         "model",
-        "interface_type",
         "created_at",
         "updated_at",
     )
@@ -82,24 +78,15 @@ class AnnotationAdmin(admin.ModelAdmin):
         "dermatologist",
         "case_id",
         "model",
-        "interface_type",
         "short_feedback",
         "first_completion_display",
         "updated_at",
     )
-    list_filter = ("interface_type", "dermatologist")
+    list_filter = ("dermatologist",)
     search_fields = ("dermatologist__login_id", "case_id", "model")
     readonly_fields = ("first_entered_at", "first_completed_at")
 
     def short_feedback(self, obj):
-        if obj.interface_type == "unconditional":
-            diags = [
-                (obj.user_diagnosis_1 or _EMPTY_TC).get("text", ""),
-                (obj.user_diagnosis_2 or _EMPTY_TC).get("text", ""),
-                (obj.user_diagnosis_3 or _EMPTY_TC).get("text", ""),
-            ]
-            filled = [d for d in diags if d.strip()]
-            return f"{len(filled)} diagnoses" if filled else ""
         slots = [
             (obj.diagnosis_1 or {}, obj.reasoning_1 or []),
             (obj.diagnosis_2 or {}, obj.reasoning_2 or []),
@@ -181,7 +168,7 @@ class DermatologistAdmin(admin.ModelAdmin):
     progress_display.short_description = "progress"
 
     def export_csv_view(self, request):
-        """Export all annotations in the unified CSV format.
+        """Export all annotations as a flat CSV.
 
         Conditional rows are flattened across the top-3 differential, so
         each diagnosis gets four dedicated columns:
@@ -195,7 +182,8 @@ class DermatologistAdmin(admin.ModelAdmin):
             diag_N_correct_differential  free-text alternative when label
                 == 'incorrect' (with [ev k] crops inlined as [crop:{...}])
 
-        Unconditional rows keep user_diagnosis_1/2/3 and user_reasons.
+        The unconditional (human-only) flow has been retired and persists
+        no data, so it contributes no columns.
         """
         response = HttpResponse(content_type="text/csv; charset=utf-8")
         response["Content-Disposition"] = 'attachment; filename="annotations_export.csv"'
@@ -206,16 +194,11 @@ class DermatologistAdmin(admin.ModelAdmin):
             "login_id",
             "case_id",
             "model",
-            "interface_type",
             "raw_response",
             "diag_1_name", "diag_1_label", "reasoning_1", "diag_1_correct_differential",
             "diag_2_name", "diag_2_label", "reasoning_2", "diag_2_correct_differential",
             "diag_3_name", "diag_3_label", "reasoning_3", "diag_3_correct_differential",
             "other_feedback",
-            "user_diagnosis_1",
-            "user_diagnosis_2",
-            "user_diagnosis_3",
-            "user_reasons",
             "first_entered_at",
             "first_completed_at",
             "first_completion_seconds",
@@ -231,60 +214,46 @@ class DermatologistAdmin(admin.ModelAdmin):
         )
 
         for ann in annotations:
-            other_fb_export = ""
-            ud1 = ud2 = ud3 = ur = ""
             per_diag_cols = [""] * 12
-
-            if ann.interface_type == "conditional":
-                slots = [
-                    (ann.diagnosis_1 or {}, ann.reasoning_1 or []),
-                    (ann.diagnosis_2 or {}, ann.reasoning_2 or []),
-                    (ann.diagnosis_3 or {}, ann.reasoning_3 or []),
-                ]
-                for k, (d, r) in enumerate(slots):
-                    label = d.get("label", "") or ""
-                    edits_out = []
-                    for edit in r or []:
-                        original = (edit or {}).get("original", "")
-                        edited = (edit or {}).get("edited", original)
-                        edits_out.append({
-                            "original": original,
-                            "edited": inline_crops(edited, (edit or {}).get("crops", [])),
-                            "edits_made": (edited or "") != (original or ""),
-                        })
-                    correct_diff = ""
-                    if label == "incorrect":
-                        correct_diff = inline_crops(
-                            d.get("correct_differential", ""),
-                            d.get("correct_differential_crops", []),
-                        )
-                    base = k * 4
-                    per_diag_cols[base + 0] = d.get("name", "") or ""
-                    per_diag_cols[base + 1] = label
-                    per_diag_cols[base + 2] = (
-                        json.dumps(edits_out, ensure_ascii=False) if edits_out else ""
+            slots = [
+                (ann.diagnosis_1 or {}, ann.reasoning_1 or []),
+                (ann.diagnosis_2 or {}, ann.reasoning_2 or []),
+                (ann.diagnosis_3 or {}, ann.reasoning_3 or []),
+            ]
+            for k, (d, r) in enumerate(slots):
+                label = d.get("label", "") or ""
+                edits_out = []
+                for edit in r or []:
+                    original = (edit or {}).get("original", "")
+                    edited = (edit or {}).get("edited", original)
+                    edits_out.append({
+                        "original": original,
+                        "edited": inline_crops(edited, (edit or {}).get("crops", [])),
+                        "edits_made": (edited or "") != (original or ""),
+                    })
+                correct_diff = ""
+                if label == "incorrect":
+                    correct_diff = inline_crops(
+                        d.get("correct_differential", ""),
+                        d.get("correct_differential_crops", []),
                     )
-                    per_diag_cols[base + 3] = correct_diff
+                base = k * 4
+                per_diag_cols[base + 0] = d.get("name", "") or ""
+                per_diag_cols[base + 1] = label
+                per_diag_cols[base + 2] = (
+                    json.dumps(edits_out, ensure_ascii=False) if edits_out else ""
+                )
+                per_diag_cols[base + 3] = correct_diff
 
-                other_fb_export = inline_tc(ann.other_feedback)
-            else:
-                ud1 = inline_tc(ann.user_diagnosis_1)
-                ud2 = inline_tc(ann.user_diagnosis_2)
-                ud3 = inline_tc(ann.user_diagnosis_3)
-                ur = inline_tc(ann.user_reasons)
+            other_fb_export = inline_tc(ann.other_feedback)
 
             writer.writerow([
                 ann.dermatologist.login_id,
                 ann.case_id,
                 ann.model,
-                ann.interface_type,
                 ann.raw_response,
                 *per_diag_cols,
                 other_fb_export,
-                ud1,
-                ud2,
-                ud3,
-                ur,
                 ann.first_entered_at.isoformat() if ann.first_entered_at else "",
                 ann.first_completed_at.isoformat() if ann.first_completed_at else "",
                 ann.first_completion_seconds if ann.first_completion_seconds is not None else "",

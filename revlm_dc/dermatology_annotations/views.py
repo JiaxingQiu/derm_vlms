@@ -194,6 +194,53 @@ def normalize_reasoning_edits(edits, ai_sentences):
     return out
 
 
+def _split_review_to_fields(items):
+    """Translate the canonical list-of-3 review shape (the wire format
+    used by the template / autosave POSTs) into the per-field storage
+    shape used on ``Annotation`` (``diagnosis_N`` + ``reasoning_N``).
+
+    Missing slots are materialised as empty dict / empty list so the six
+    fields always have a uniform shape.
+    """
+    items = items or []
+    out = {}
+    for k in range(3):
+        item = items[k] if k < len(items) and isinstance(items[k], dict) else {}
+        out[f"diagnosis_{k + 1}"] = {
+            "name": item.get("name", "") or "",
+            "label": item.get("label", "") or "",
+            "correct_differential": item.get("correct_differential", "") or "",
+            "correct_differential_crops": list(
+                item.get("correct_differential_crops", []) or []
+            ),
+        }
+        out[f"reasoning_{k + 1}"] = list(item.get("reasoning_edits", []) or [])
+    return out
+
+
+def _merge_review_from_fields(annotation):
+    """Inverse of :func:`_split_review_to_fields`: rebuild the list-of-3
+    wire shape from the six per-diagnosis fields on an Annotation.
+
+    Empty trailing slots (no name and no reasoning) are dropped so the
+    template renders only the diagnoses the AI actually produced.
+    """
+    merged = []
+    for k in range(1, 4):
+        d = getattr(annotation, f"diagnosis_{k}", None) or {}
+        r = getattr(annotation, f"reasoning_{k}", None) or []
+        if not d and not r:
+            continue
+        merged.append({
+            "name": d.get("name", ""),
+            "label": d.get("label", ""),
+            "reasoning_edits": list(r),
+            "correct_differential": d.get("correct_differential", ""),
+            "correct_differential_crops": list(d.get("correct_differential_crops", []) or []),
+        })
+    return merged
+
+
 def normalize_diagnosis_feedback(items, ai_diagnoses):
     """Normalise the per-diagnosis review payload.
 
@@ -259,10 +306,13 @@ def update_annotation_conditional(annotation, payload, model_key, case_data):
     annotation.interface_type = "conditional"
     annotation.raw_response = model_info.get("raw_response", "")
 
-    annotation.diagnosis_feedback = normalize_diagnosis_feedback(
-        payload.get("diagnosis_feedback", annotation.diagnosis_feedback or []),
-        ai_diagnoses,
+    incoming = payload.get(
+        "diagnosis_feedback",
+        _merge_review_from_fields(annotation),
     )
+    normalized = normalize_diagnosis_feedback(incoming, ai_diagnoses)
+    for field, value in _split_review_to_fields(normalized).items():
+        setattr(annotation, field, value)
 
     other_text = payload.get("other_feedback", "")
     other_crops = payload.get("other_feedback_crops", [])
@@ -353,7 +403,7 @@ def is_page_complete(annotation, model_key, case_data):
     if not ai_diagnoses:
         return True
 
-    feedback = annotation.diagnosis_feedback or []
+    feedback = _merge_review_from_fields(annotation)
     if len(feedback) < len(ai_diagnoses):
         return False
 
@@ -524,6 +574,13 @@ def annotations_view(request):
         defaults={"interface_type": current_interface},
     )
 
+    # Stamp the first time the user lands on this (case, model) page.
+    # Set once; never overwritten on autosaves, navigation back-and-forth,
+    # or reloads.
+    if annotation.first_entered_at is None:
+        annotation.first_entered_at = timezone.now()
+        annotation.save(update_fields=["first_entered_at"])
+
     # ---- POST: save annotation ----
     if request.method == "POST":
         payload = parse_request_payload(request)
@@ -543,6 +600,11 @@ def annotations_view(request):
             update_annotation_conditional(
                 annotation, payload, current_model_key, current_case_data,
             )
+
+        # Stamp the first successful Next/Finish click. Set once; never
+        # overwritten if the user navigates back and re-completes.
+        if action in ("next", "finish") and annotation.first_completed_at is None:
+            annotation.first_completed_at = timezone.now()
 
         annotation.save()
 
@@ -600,7 +662,7 @@ def annotations_view(request):
         of = annotation.other_feedback or _EMPTY_TC
         saved_unconditional = {}
         saved_model_review = {
-            "diagnosis_feedback": annotation.diagnosis_feedback or [],
+            "diagnosis_feedback": _merge_review_from_fields(annotation),
             "other_feedback": of.get("text", ""),
             "other_feedback_crops": of.get("crops", []),
         }

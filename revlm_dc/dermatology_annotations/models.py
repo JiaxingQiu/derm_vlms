@@ -34,16 +34,27 @@ class Annotation(models.Model):
 
     # --- Conditional: AI response evaluation ---
     raw_response = models.TextField(blank=True, default="")
-    # Per-diagnosis review entries. Each item:
+    # Six fields, three pairs, one pair per AI differential (top-3).
+    #
+    # diagnosis_N (dict): verdict + correct alternative
     #   {
-    #     "name": str,                          # AI diagnosis name
-    #     "label": "" | "correct" | "incorrect",  # "" or "correct" = accepted
-    #     "reasoning_edits": [                   # aligned 1:1 with AI sentences
-    #         {"original": str, "edited": str}
-    #     ],
-    #     "correct_differential": str           # required when label == "incorrect"
+    #     "name": str,                                  # AI diagnosis name (read-only)
+    #     "label": "" | "correct" | "incorrect",
+    #     "correct_differential": str,                  # required when label == "incorrect"
+    #     "correct_differential_crops": [{x,y,w,h}, ...]
     #   }
-    diagnosis_feedback = models.JSONField(default=list, blank=True)
+    #
+    # reasoning_N (list): 1:1 with AI-extracted sentences for diagnosis N
+    #   [{"original": str, "edited": str, "crops": [{x,y,w,h}, ...]}, ...]
+    #
+    # Crops always live next to the text whose [ev N] markers they back, so
+    # they never need to be re-aligned across fields.
+    diagnosis_1 = models.JSONField(default=dict, blank=True)
+    reasoning_1 = models.JSONField(default=list, blank=True)
+    diagnosis_2 = models.JSONField(default=dict, blank=True)
+    reasoning_2 = models.JSONField(default=list, blank=True)
+    diagnosis_3 = models.JSONField(default=dict, blank=True)
+    reasoning_3 = models.JSONField(default=list, blank=True)
     # {text, crops: [{x,y,w,h},...]}
     other_feedback = models.JSONField(default=_empty_text_crops, blank=True)
 
@@ -56,6 +67,19 @@ class Annotation(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    # --- Timing (set once, never overwritten) ---
+    # First time the user GET-rendered this (case, model) page.
+    first_entered_at = models.DateTimeField(null=True, blank=True)
+    # First time the user clicked Next/Finish on this page.
+    first_completed_at = models.DateTimeField(null=True, blank=True)
+
+    @property
+    def first_completion_seconds(self):
+        """Wall-clock seconds from first entry to first completion, or None."""
+        if not self.first_entered_at or not self.first_completed_at:
+            return None
+        return (self.first_completed_at - self.first_entered_at).total_seconds()
 
     class Meta:
         constraints = [

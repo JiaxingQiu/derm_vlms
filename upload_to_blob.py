@@ -114,10 +114,16 @@ def upload_folder(config: dict[str, Any]) -> None:
     resolved_container_name = container_name or extract_container_name(container_client.url)
 
     uploaded_count = 0
+    skipped_count = 0
     for file_path in iter_files(source_path):
         relative_path = file_path.relative_to(source_path).as_posix()
         blob_name = f"{blob_prefix}{relative_path}"
         blob_client = container_client.get_blob_client(blob_name)
+
+        if not overwrite and blob_client.exists():
+            skipped_count += 1
+            print(f"Skipped existing blob: {resolved_container_name}/{blob_name}")
+            continue
 
         with open(file_path, "rb") as data:
             blob_client.upload_blob(data, overwrite=overwrite)
@@ -126,8 +132,8 @@ def upload_folder(config: dict[str, Any]) -> None:
         print(f"Uploaded {file_path} -> {resolved_container_name}/{blob_name}")
 
     print(
-        f"Finished upload: {uploaded_count} files from {source_path} "
-        f"to container '{resolved_container_name}' with prefix '{blob_prefix}'"
+        f"Finished upload: {uploaded_count} files uploaded, {skipped_count} files skipped "
+        f"from {source_path} to container '{resolved_container_name}' with prefix '{blob_prefix}'"
     )
 
 

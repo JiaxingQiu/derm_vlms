@@ -50,6 +50,12 @@ def extract_container_name(container_url: str) -> str:
     return path_parts[0]
 
 
+def normalize_blob_endpoint(netloc: str) -> str:
+    if netloc.endswith(".file.core.windows.net"):
+        return netloc.replace(".file.core.windows.net", ".blob.core.windows.net")
+    return netloc
+
+
 def build_container_url(sas_url: str, sas_token: str | None, container_name: str | None) -> str:
     split = urlsplit(sas_url)
     query = sas_token.lstrip("?") if sas_token else split.query
@@ -64,7 +70,9 @@ def build_container_url(sas_url: str, sas_token: str | None, container_name: str
             )
         container_path = f"/{container_name.strip('/')}"
 
-    return urlunsplit((split.scheme, split.netloc, container_path, query, split.fragment))
+    return urlunsplit(
+        (split.scheme, normalize_blob_endpoint(split.netloc), container_path, query, split.fragment)
+    )
 
 
 def build_container_client(config: dict[str, Any], container_name: str | None) -> ContainerClient:

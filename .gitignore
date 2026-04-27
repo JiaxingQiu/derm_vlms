@@ -55,3 +55,5 @@ revlm_dc/data/
 revlm_dc/db.sqlite3
 jobs/
 migrations/
+revlm_dc/dermatology_annotations/migrations/*.py
+!revlm_dc/dermatology_annotations/migrations/__init__.py

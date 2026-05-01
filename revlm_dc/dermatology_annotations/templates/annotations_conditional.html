@@ -16,7 +16,7 @@
         <div class="crop-hint">Use Crop &#x2702; to select a region as evidence for any part of your feedback</div>
 
         <div class="field" id="diag-section">
-            <div class="field-label">AI Diagnoses</div>
+            <div class="field-label">AI Diagnoses <span style="color:#dc3545">*</span></div>
             <div class="diag-list" id="diag-list"></div>
         </div>
     </div>
@@ -463,12 +463,12 @@
 
         var cdLabel = document.createElement('div');
         cdLabel.className = 'sub-label';
-        cdLabel.textContent = 'Correct differential (required)';
+        cdLabel.innerHTML = 'Correct differential <span style="color:#dc3545">*</span>';
         cdWrap.appendChild(cdLabel);
 
         var cdTa = document.createElement('textarea');
         cdTa.rows = 1;
-        cdTa.placeholder = 'Enter the correct differential diagnosis...';
+        cdTa.placeholder = 'Please enter the correct differential diagnosis';
         cdTa.dataset.kind = 'correct-diff';
         cdTa.dataset.diagIndex = String(dIdx);
         cdTa.value = diag.correct_differential;

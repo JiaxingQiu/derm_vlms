@@ -22,6 +22,10 @@ class Dermatologist(models.Model):
     def __str__(self):
         return self.login_id
 
+    class Meta:
+        verbose_name = "User"
+        verbose_name_plural = "Users"
+
 
 class Assignment(models.Model):
     """Which cases an evaluator should annotate, in what order.

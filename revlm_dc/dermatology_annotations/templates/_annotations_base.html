@@ -29,6 +29,8 @@
             <span class="progress" id="progress">Page {{ current_page|add:1 }} / {{ total_pages }}</span>
             <span class="meta-line">{{ login_id }}</span>
             <a href="{% url 'logout' %}?auth={{ auth_token|urlencode }}" class="logout-link">Logout</a>
+            <a href="https://www.youtube.com/watch?v=eMlx5fFNoYc" target="_blank" rel="noopener"
+               style="font-size:.82rem;color:#007bff;text-decoration:underline;font-weight:600;white-space:nowrap">&#9654; Watch Instruction Video</a>
         </div>
     </header>
 
@@ -98,7 +100,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .done-shell{max-width:720px;margin:48px auto;padding:0 24px}
 .done-form{display:flex;gap:12px;margin-top:20px}
 
-.anno-header{background:#fff;border-bottom:1px solid #e0e0e0;padding:14px 24px;display:flex;align-items:center;gap:16px;position:sticky;top:0;z-index:100}
+.anno-header{background:#fff;border-bottom:1px solid #e0e0e0;padding:14px 24px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;position:sticky;top:0;z-index:100}
 .anno-header h1{font-size:1.2rem;color:#1a1a2e;white-space:nowrap}
 .header-prompt{font-size:.72rem;line-height:1.3;color:#9ca3af;max-width:720px}
 .hctl{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-left:auto}

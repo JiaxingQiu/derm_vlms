@@ -390,18 +390,16 @@ def login_view(request):
 
         if action == "register":
             show_register = True
-            first_name = request.POST.get("first_name", "").strip()
-            last_name = request.POST.get("last_name", "").strip()
+            full_name = request.POST.get("full_name", "").strip()
             occupation = request.POST.get("occupation", "").strip()
             institution = request.POST.get("institution", "").strip()
             form_data.update({
-                "first_name": first_name,
-                "last_name": last_name,
+                "full_name": full_name,
                 "occupation": occupation,
                 "institution": institution,
             })
 
-            if not login_id or not first_name or not last_name or not occupation or not institution:
+            if not login_id or not full_name or not occupation or not institution:
                 error_message = "All fields are required."
             elif Dermatologist.objects.filter(login_id=login_id).exists():
                 error_message = "Username already taken."
@@ -409,8 +407,7 @@ def login_view(request):
                 from .assignments import assign_cases_for_user
                 evaluator = Dermatologist.objects.create(
                     login_id=login_id,
-                    first_name=first_name,
-                    last_name=last_name,
+                    full_name=full_name,
                     occupation=occupation,
                     institution=institution,
                 )
@@ -492,7 +489,8 @@ def annotations_view(request):
             if action == "done_yes":
                 dermatologist.is_done = True
                 dermatologist.save()
-                return redirect(auth_url("thank_you", raw_token))
+                revoke_tab_auth_session(raw_token)
+                return redirect("login")
 
             if action == "done_no":
                 flat_index = total_pages - 1
@@ -519,7 +517,8 @@ def annotations_view(request):
         )
 
     if dermatologist.is_done:
-        return redirect(auth_url("thank_you", raw_token))
+        revoke_tab_auth_session(raw_token)
+        return redirect("login")
 
     # ---- Current page data ----
     flat_index = min(flat_index, total_pages - 1)
@@ -627,19 +626,6 @@ def annotations_view(request):
     }
 
     return render(request, "annotations_conditional.html", context)
-
-
-@never_cache
-@csrf_exempt
-def thank_you_view(request):
-    raw_token, tab_session = get_tab_auth_session(request)
-    if tab_session is None:
-        return redirect("login")
-    return render(
-        request,
-        "thank_you.html",
-        {"login_id": tab_session.dermatologist.login_id, "auth_token": raw_token},
-    )
 
 
 @never_cache

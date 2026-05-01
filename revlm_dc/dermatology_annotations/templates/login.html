@@ -3,6 +3,10 @@
 {% block title %}Login / Register{% endblock %}
 
 {% block content %}
+<div style="text-align:right;padding:10px 16px 0">
+    <a href="https://www.youtube.com/watch?v=eMlx5fFNoYc" target="_blank" rel="noopener"
+       style="font-size:.82rem;color:#007bff;text-decoration:underline;font-weight:600">&#9654; Watch Instruction Video</a>
+</div>
 <style>
 .login-card{max-width:440px;margin:60px auto}
 .login-card h2{font-size:1.4rem;margin-bottom:1.2rem}
@@ -39,14 +43,9 @@
         <!-- Registration profile fields (hidden until user clicks Register) -->
         <div class="reg-fields {% if show_register %}open{% endif %}" id="reg-fields">
             <div class="form-group">
-                <label for="first_name">First name<span class="req-star">*</span></label>
-                <input type="text" class="form-control" name="first_name" id="first_name"
-                       value="{{ form_data.first_name|default:'' }}">
-            </div>
-            <div class="form-group">
-                <label for="last_name">Last name<span class="req-star">*</span></label>
-                <input type="text" class="form-control" name="last_name" id="last_name"
-                       value="{{ form_data.last_name|default:'' }}">
+                <label for="full_name">Full Name (First Last)<span class="req-star">*</span></label>
+                <input type="text" class="form-control" name="full_name" id="full_name"
+                       value="{{ form_data.full_name|default:'' }}">
             </div>
             <div class="form-group">
                 <label for="occupation">Occupation<span class="req-star">*</span></label>

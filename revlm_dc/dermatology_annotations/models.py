@@ -9,8 +9,7 @@ class Dermatologist(models.Model):
     login_id = models.CharField(max_length=100, unique=True)
 
     # --- Profile (collected at registration) ---
-    first_name = models.CharField(max_length=100, default="", blank=True)
-    last_name = models.CharField(max_length=100, default="", blank=True)
+    full_name = models.CharField(max_length=200, default="", blank=True)
     occupation = models.CharField(max_length=200, default="", blank=True)
     institution = models.CharField(max_length=200, default="", blank=True)
     registered_at = models.DateTimeField(auto_now_add=True)

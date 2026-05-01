@@ -99,15 +99,14 @@ class AnnotationAdmin(admin.ModelAdmin):
 class DermatologistAdmin(admin.ModelAdmin):
     list_display = (
         "login_id",
-        "first_name",
-        "last_name",
+        "full_name",
         "institution",
         "assignment_count",
         "completed_cases_count",
         "progress_display",
         "registered_at",
     )
-    search_fields = ("login_id", "first_name", "last_name", "institution")
+    search_fields = ("login_id", "full_name", "institution")
     inlines = [AssignmentInline, AnnotationInline]
     change_list_template = "admin/dermatology_annotations/dermatologist/change_list.html"
 
@@ -160,8 +159,7 @@ class DermatologistAdmin(admin.ModelAdmin):
         writer = csv.writer(response)
         writer.writerow([
             "login_id",
-            "first_name",
-            "last_name",
+            "full_name",
             "occupation",
             "institution",
             "case_id",
@@ -222,8 +220,7 @@ class DermatologistAdmin(admin.ModelAdmin):
 
             writer.writerow([
                 d.login_id,
-                d.first_name,
-                d.last_name,
+                d.full_name,
                 d.occupation,
                 d.institution,
                 ann.case_id,

@@ -8,25 +8,13 @@ from django.contrib import admin
 from django.http import HttpResponse
 from django.urls import path
 
-from .models import Dermatologist, Annotation
+from .models import Assignment, Dermatologist, Annotation
 from .views import (
     build_page_sequence,
     find_first_incomplete_page,
-    get_case_interface_map,
     get_user_case_ids,
-    load_annotations_data as load_annotations_data_view,
-    load_users_config,
+    load_annotations_data,
 )
-
-def load_annotations_data():
-    json_path = Path(settings.BASE_DIR) / "data" / "annotations_data.json"
-    with open(json_path, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-
-def get_total_case_count():
-    data = load_annotations_data()
-    return len(data)
 
 
 def inline_crops(text, crops):
@@ -49,14 +37,17 @@ def inline_tc(tc):
 class AnnotationInline(admin.TabularInline):
     model = Annotation
     extra = 0
-    fields = (
-        "case_id",
-        "model",
-        "created_at",
-        "updated_at",
-    )
+    fields = ("case_id", "model", "created_at", "updated_at")
     readonly_fields = ("created_at", "updated_at")
     ordering = ("case_id", "model")
+
+
+class AssignmentInline(admin.TabularInline):
+    model = Assignment
+    extra = 0
+    fields = ("order", "case_id")
+    readonly_fields = ("order", "case_id")
+    ordering = ("order",)
 
 
 def _format_duration(seconds):
@@ -108,30 +99,26 @@ class AnnotationAdmin(admin.ModelAdmin):
 class DermatologistAdmin(admin.ModelAdmin):
     list_display = (
         "login_id",
-        "current_case_index",
-        "current_model_index",
-        "is_done",
+        "first_name",
+        "last_name",
+        "institution",
+        "assignment_count",
         "completed_cases_count",
-        "total_cases_count",
         "progress_display",
+        "registered_at",
     )
-    search_fields = ("login_id",)
-    inlines = [AnnotationInline]
+    search_fields = ("login_id", "first_name", "last_name", "institution")
+    inlines = [AssignmentInline, AnnotationInline]
     change_list_template = "admin/dermatology_annotations/dermatologist/change_list.html"
 
     def _get_user_page_sequence(self, obj):
-        users_config = load_users_config()
-        annotations_data = load_annotations_data_view()
-        login_id = obj.login_id
-
-        user_case_ids = get_user_case_ids(users_config, login_id)
+        annotations_data = load_annotations_data()
+        user_case_ids = get_user_case_ids(obj)
         if user_case_ids:
-            case_ids = [case_id for case_id in user_case_ids if case_id in annotations_data]
+            case_ids = [cid for cid in user_case_ids if cid in annotations_data]
         else:
             case_ids = sorted(annotations_data.keys())
-
-        interface_map = get_case_interface_map(users_config, login_id)
-        return build_page_sequence(case_ids, annotations_data, interface_map), annotations_data
+        return build_page_sequence(case_ids, annotations_data), annotations_data
 
     def get_urls(self):
         urls = super().get_urls()
@@ -144,9 +131,9 @@ class DermatologistAdmin(admin.ModelAdmin):
         ]
         return custom_urls + urls
 
-    def get_user_case_count(self, obj):
-        pages, _ = self._get_user_page_sequence(obj)
-        return len(pages)
+    def assignment_count(self, obj):
+        return obj.assignments.count()
+    assignment_count.short_description = "cases"
 
     def completed_cases_count(self, obj):
         pages, annotations_data = self._get_user_page_sequence(obj)
@@ -155,36 +142,17 @@ class DermatologistAdmin(admin.ModelAdmin):
         return find_first_incomplete_page(pages, annotations_data, obj)
     completed_cases_count.short_description = "completed"
 
-    def total_cases_count(self, obj):
-        return self.get_user_case_count(obj)
-    total_cases_count.short_description = "total"
-
     def progress_display(self, obj):
-        total = self.get_user_case_count(obj)
-        completed = self.completed_cases_count(obj)
+        pages, annotations_data = self._get_user_page_sequence(obj)
+        total = len(pages)
         if total == 0:
             return "0 / 0"
+        completed = find_first_incomplete_page(pages, annotations_data, obj)
         return f"{completed} / {total}"
     progress_display.short_description = "progress"
 
     def export_csv_view(self, request):
-        """Export all annotations as a flat CSV.
-
-        Conditional rows are flattened across the top-3 differential, so
-        each diagnosis gets four dedicated columns:
-
-            diag_N_name                  AI-provided diagnosis name
-            diag_N_label                 'correct' | 'incorrect' | ''
-            reasoning_N                  JSON list of
-                {original, edited, edits_made}
-                with sentence-level [ev k] crops inlined into ``edited`` as
-                ``[crop:{...}]`` markers
-            diag_N_correct_differential  free-text alternative when label
-                == 'incorrect' (with [ev k] crops inlined as [crop:{...}])
-
-        The unconditional (human-only) flow has been retired and persists
-        no data, so it contributes no columns.
-        """
+        """Export all annotations as a flat CSV with evaluator profile columns."""
         response = HttpResponse(content_type="text/csv; charset=utf-8")
         response["Content-Disposition"] = 'attachment; filename="annotations_export.csv"'
         response.write("\ufeff")
@@ -192,6 +160,10 @@ class DermatologistAdmin(admin.ModelAdmin):
         writer = csv.writer(response)
         writer.writerow([
             "login_id",
+            "first_name",
+            "last_name",
+            "occupation",
+            "institution",
             "case_id",
             "model",
             "raw_response",
@@ -246,9 +218,14 @@ class DermatologistAdmin(admin.ModelAdmin):
                 per_diag_cols[base + 3] = correct_diff
 
             other_fb_export = inline_tc(ann.other_feedback)
+            d = ann.dermatologist
 
             writer.writerow([
-                ann.dermatologist.login_id,
+                d.login_id,
+                d.first_name,
+                d.last_name,
+                d.occupation,
+                d.institution,
                 ann.case_id,
                 ann.model,
                 ann.raw_response,
@@ -267,3 +244,11 @@ class DermatologistAdmin(admin.ModelAdmin):
         extra_context = extra_context or {}
         extra_context["export_csv_url"] = "export-csv/"
         return super().changelist_view(request, extra_context=extra_context)
+
+
+@admin.register(Assignment)
+class AssignmentAdmin(admin.ModelAdmin):
+    list_display = ("evaluator", "order", "case_id")
+    list_filter = ("evaluator",)
+    search_fields = ("evaluator__login_id", "case_id")
+    ordering = ("evaluator", "order")

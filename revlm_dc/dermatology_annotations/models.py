@@ -5,13 +5,45 @@ from django.utils import timezone
 
 
 class Dermatologist(models.Model):
+    # --- Identity (stored lowercase, case-insensitive) ---
     login_id = models.CharField(max_length=100, unique=True)
+
+    # --- Profile (collected at registration) ---
+    first_name = models.CharField(max_length=100, default="", blank=True)
+    last_name = models.CharField(max_length=100, default="", blank=True)
+    occupation = models.CharField(max_length=200, default="", blank=True)
+    institution = models.CharField(max_length=200, default="", blank=True)
+    registered_at = models.DateTimeField(auto_now_add=True)
+
+    # --- Progress ---
     current_case_index = models.PositiveIntegerField(default=0)
     current_model_index = models.PositiveIntegerField(default=0)
     is_done = models.BooleanField(default=False)
 
     def __str__(self):
         return self.login_id
+
+
+class Assignment(models.Model):
+    """Which cases an evaluator should annotate, in what order.
+
+    Created either at self-registration (auto-assigned via RCT logic)
+    or in bulk via ``python manage.py generate_assignments``.
+    """
+    evaluator = models.ForeignKey(
+        Dermatologist,
+        on_delete=models.CASCADE,
+        related_name="assignments",
+    )
+    case_id = models.CharField(max_length=100)
+    order = models.PositiveIntegerField()
+
+    class Meta:
+        unique_together = [("evaluator", "case_id")]
+        ordering = ["evaluator", "order"]
+
+    def __str__(self):
+        return f"{self.evaluator.login_id} #{self.order}: {self.case_id}"
 
 
 def _default_tab_session_expiry():
@@ -30,11 +62,6 @@ class Annotation(models.Model):
     )
     case_id = models.CharField(max_length=100)
     model = models.CharField(max_length=100, blank=True, default="")
-
-    # NOTE: ``interface_type`` was a CharField here in earlier revisions.
-    # It has been retired: routing is config-driven (``users.yaml`` →
-    # ``get_case_interface_map`` in views.py), so persisting the same
-    # value on every Annotation row was redundant.
 
     # --- Conditional: AI response evaluation ---
     raw_response = models.TextField(blank=True, default="")
@@ -61,11 +88,6 @@ class Annotation(models.Model):
     reasoning_3 = models.JSONField(default=list, blank=True)
     # {text, crops: [{x,y,w,h},...]}
     other_feedback = models.JSONField(default=_empty_text_crops, blank=True)
-
-    # NOTE: The unconditional (human-only assessment) interface has been
-    # retired. The template, routing, and ``interface_type`` field are kept
-    # so the flow can be revived later, but no data is persisted for it
-    # anymore. See migrations/0004_drop_unconditional_fields.py.
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

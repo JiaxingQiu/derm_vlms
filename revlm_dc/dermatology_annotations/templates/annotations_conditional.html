@@ -461,9 +461,14 @@
         var cdWrap = document.createElement('div');
         cdWrap.className = 'correct-diff';
 
+        var cdLabel = document.createElement('div');
+        cdLabel.className = 'sub-label';
+        cdLabel.textContent = 'Correct differential (required)';
+        cdWrap.appendChild(cdLabel);
+
         var cdTa = document.createElement('textarea');
         cdTa.rows = 1;
-        cdTa.placeholder = 'What is the correct differential (required)?';
+        cdTa.placeholder = 'Enter the correct differential diagnosis...';
         cdTa.dataset.kind = 'correct-diff';
         cdTa.dataset.diagIndex = String(dIdx);
         cdTa.value = diag.correct_differential;

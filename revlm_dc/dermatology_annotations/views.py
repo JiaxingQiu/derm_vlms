@@ -14,7 +14,7 @@ from django.urls import reverse
 from django.shortcuts import redirect, render
 from django.utils import timezone
 
-from .models import Annotation, Dermatologist, TabAuthSession
+from .models import Annotation, Assignment, Dermatologist, TabAuthSession
 
 
 _EMPTY_TC = {"text": "", "crops": []}
@@ -26,16 +26,6 @@ AUTH_TOKEN_TTL = timedelta(hours=12)
 # Data loading
 # ---------------------------------------------------------------------------
 
-def load_users_config():
-    json_path = Path(settings.BASE_DIR) / "data" / "users.json"
-    with open(json_path, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-
-def load_valid_users():
-    return load_users_config()["users"]
-
-
 def load_annotations_data():
     json_path = Path(settings.BASE_DIR) / "data" / "annotations_data.json"
     with open(json_path, "r", encoding="utf-8") as f:
@@ -43,24 +33,17 @@ def load_annotations_data():
 
 
 # ---------------------------------------------------------------------------
-# User / assignment helpers
+# User / assignment helpers (DB-backed)
 # ---------------------------------------------------------------------------
 
-def get_user_case_ids(users_config, login_id):
-    """Return the ordered list of case_ids assigned to this user."""
-    user_data = users_config["users"].get(login_id, {})
-    assignments = user_data.get("assignments", [])
-    return [a["case_id"] for a in assignments]
-
-
-def get_case_interface_map(users_config, login_id):
-    """Return {case_id: interface_type} for this user's assignments."""
-    user_data = users_config["users"].get(login_id, {})
-    assignments = user_data.get("assignments", [])
-    return {
-        a["case_id"]: a.get("conditions", {}).get("interface_type", "conditional")
-        for a in assignments
-    }
+def get_user_case_ids(dermatologist):
+    """Return the ordered list of case_ids assigned to this evaluator."""
+    return list(
+        Assignment.objects
+        .filter(evaluator=dermatologist)
+        .order_by("order")
+        .values_list("case_id", flat=True)
+    )
 
 
 def get_model_keys(case_data):
@@ -321,29 +304,18 @@ def update_annotation_conditional(annotation, payload, model_key, case_data):
         annotation.other_feedback = dict(_EMPTY_TC)
 
 
-# NOTE: ``update_annotation_unconditional`` was removed when the
-# unconditional (human-only) flow was retired. The template and routing
-# remain so the interface can be rendered, but no result fields are
-# persisted. To revive: restore this function + the four ``user_*``
-# fields on :class:`Annotation` and re-add the dispatch in
-# ``annotations_view``'s POST branch.
-
-
 # ---------------------------------------------------------------------------
 # Page sequence / completion
 # ---------------------------------------------------------------------------
 
-def build_page_sequence(case_ids, annotations_data, interface_map=None):
+def build_page_sequence(case_ids, annotations_data):
+    """Expand case_ids into (case_id, model_key) page tuples."""
     pages = []
     for case_id in case_ids:
-        iface = (interface_map or {}).get(case_id, "conditional")
-        if iface == "unconditional":
-            pages.append((case_id, None))
-        else:
-            case_data = annotations_data.get(case_id, {})
-            model_keys = get_model_keys(case_data)
-            for model_key in model_keys:
-                pages.append((case_id, model_key))
+        case_data = annotations_data.get(case_id, {})
+        model_keys = get_model_keys(case_data)
+        for model_key in model_keys:
+            pages.append((case_id, model_key))
     return pages
 
 
@@ -407,24 +379,60 @@ def login_view(request):
         return redirect(auth_url("annotations", raw_token))
 
     error_message = None
+    success_message = None
+    show_register = False
+    form_data = {}
 
     if request.method == "POST":
-        login_id = request.POST.get("login_id", "").strip()
-        valid_users = load_valid_users()
+        action = request.POST.get("action", "login")
+        login_id = request.POST.get("login_id", "").strip().lower()
+        form_data["login_id"] = login_id
 
-        if login_id not in valid_users:
-            error_message = "invalid login id"
+        if action == "register":
+            show_register = True
+            first_name = request.POST.get("first_name", "").strip()
+            last_name = request.POST.get("last_name", "").strip()
+            occupation = request.POST.get("occupation", "").strip()
+            institution = request.POST.get("institution", "").strip()
+            form_data.update({
+                "first_name": first_name,
+                "last_name": last_name,
+                "occupation": occupation,
+                "institution": institution,
+            })
+
+            if not login_id or not first_name or not last_name or not occupation or not institution:
+                error_message = "All fields are required."
+            elif Dermatologist.objects.filter(login_id=login_id).exists():
+                error_message = "Username already taken."
+            else:
+                from .assignments import assign_cases_for_user
+                evaluator = Dermatologist.objects.create(
+                    login_id=login_id,
+                    first_name=first_name,
+                    last_name=last_name,
+                    occupation=occupation,
+                    institution=institution,
+                )
+                assign_cases_for_user(evaluator)
+                raw_token, _ = create_tab_auth_session(login_id)
+                return redirect(auth_url("annotations", raw_token))
+
         else:
-            raw_token, _ = create_tab_auth_session(login_id)
-            return redirect(auth_url("annotations", raw_token))
+            if not login_id:
+                error_message = "Please enter your username."
+            elif not Dermatologist.objects.filter(login_id=login_id).exists():
+                error_message = "Username not found. Please register first."
+            else:
+                raw_token, _ = create_tab_auth_session(login_id)
+                return redirect(auth_url("annotations", raw_token))
 
-    return render(request, "login.html", {"error_message": error_message})
-
-
-TEMPLATE_MAP = {
-    "conditional": "annotations_conditional.html",
-    "unconditional": "annotations_unconditional.html",
-}
+    return render(request, "login.html", {
+        "error_message": error_message,
+        "success_message": success_message,
+        "show_register": show_register,
+        "form_data": form_data,
+    })
 
 
 @never_cache
@@ -437,10 +445,9 @@ def annotations_view(request):
     login_id = tab_session.dermatologist.login_id
 
     annotations_data = load_annotations_data()
-    users_config = load_users_config()
     dermatologist = tab_session.dermatologist
 
-    user_case_ids = get_user_case_ids(users_config, login_id)
+    user_case_ids = get_user_case_ids(dermatologist)
 
     if user_case_ids:
         case_ids = [cid for cid in user_case_ids if cid in annotations_data]
@@ -456,8 +463,7 @@ def annotations_view(request):
             {"login_id": login_id, "no_cases": True, "auth_token": raw_token},
         )
 
-    interface_map = get_case_interface_map(users_config, login_id)
-    pages = build_page_sequence(case_ids, annotations_data, interface_map)
+    pages = build_page_sequence(case_ids, annotations_data)
     total_pages = len(pages)
 
     # ---- Determine current flat page index ----
@@ -519,7 +525,6 @@ def annotations_view(request):
     flat_index = min(flat_index, total_pages - 1)
     current_case_id, current_model_key = pages[flat_index]
     current_case_data = annotations_data[current_case_id]
-    current_interface = interface_map.get(current_case_id, "conditional")
 
     current_model_data = (
         current_case_data.get(current_model_key, {})
@@ -553,12 +558,9 @@ def annotations_view(request):
             dermatologist.save()
             return redirect(auth_url("annotations", raw_token))
 
-        # The unconditional flow is retired: it has no persistence layer.
-        # Conditional pages handle the only saved schema.
-        if current_interface != "unconditional":
-            update_annotation_conditional(
-                annotation, payload, current_model_key, current_case_data,
-            )
+        update_annotation_conditional(
+            annotation, payload, current_model_key, current_case_data,
+        )
 
         # Stamp the first successful Next/Finish click. Set once; never
         # overwritten if the user navigates back and re-completes.
@@ -582,10 +584,7 @@ def annotations_view(request):
         else:
             nav_case_id, nav_model_key = pages[new_flat]
             nav_ci = case_ids.index(nav_case_id)
-            if nav_model_key is None:
-                nav_mi = 0
-            else:
-                nav_mi = get_model_keys(annotations_data[nav_case_id]).index(nav_model_key)
+            nav_mi = get_model_keys(annotations_data[nav_case_id]).index(nav_model_key)
             dermatologist.current_case_index = nav_ci
             dermatologist.current_model_index = nav_mi
 
@@ -605,21 +604,12 @@ def annotations_view(request):
         return redirect(auth_url("annotations", raw_token, nav=1))
 
     # ---- GET: build template context ----
-    # The unconditional flow no longer persists data; the template still
-    # renders so it can be revived later, but ``saved_unconditional`` is
-    # always empty.
-    saved_unconditional = {}
-    if current_interface == "unconditional":
-        saved_model_review = {}
-    else:
-        of = annotation.other_feedback or _EMPTY_TC
-        saved_model_review = {
-            "diagnosis_feedback": _merge_review_from_fields(annotation),
-            "other_feedback": of.get("text", ""),
-            "other_feedback_crops": of.get("crops", []),
-        }
-
-    template = TEMPLATE_MAP.get(current_interface, "annotations_conditional.html")
+    of = annotation.other_feedback or _EMPTY_TC
+    saved_model_review = {
+        "diagnosis_feedback": _merge_review_from_fields(annotation),
+        "other_feedback": of.get("text", ""),
+        "other_feedback_crops": of.get("crops", []),
+    }
 
     context = {
         "login_id": login_id,
@@ -629,7 +619,6 @@ def annotations_view(request):
         "model_data": current_model_data,
         "annotation": annotation,
         "saved_model_review": saved_model_review,
-        "saved_unconditional": saved_unconditional,
         "current_page": flat_index,
         "total_pages": total_pages,
         "has_previous": flat_index > 0,
@@ -637,7 +626,7 @@ def annotations_view(request):
         "auth_token": raw_token,
     }
 
-    return render(request, template, context)
+    return render(request, "annotations_conditional.html", context)
 
 
 @never_cache

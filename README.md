@@ -147,11 +147,20 @@ cd revlm_dc
 python manage.py makemigrations
 python manage.py migrate
 python manage.py parsedata
-python manage.py generate_assignments configs/test_config.yaml
 python manage.py runserver 0.0.0.0:8000
 ```
 
-`parsedata` reads `results/*_predictions_all.csv`, parses VLM responses into diagnoses + descriptions, writes `revlm_dc/data/annotations_data.json`, and copies combined images to `revlm_dc/images/`. `generate_assignments` builds per-user lesion queues; adjust `--users`, `--max-lesions`, and `--enable-factors` as needed.
+`parsedata` reads `results/*_predictions_all.csv`, parses VLM responses into diagnoses + descriptions, writes `revlm_dc/data/annotations_data.json`, and copies combined images to `revlm_dc/images/`.
+
+#### User management
+
+Users register themselves through the web interface (login page → "New? Register"). On registration, the system collects their full name, occupation, and institution, creates a `Dermatologist` record, and auto-assigns RCT-balanced lesions via the `Assignment` model.
+
+To **pre-seed test users** (e.g. for local development), use `generate_assignments`:
+
+```bash
+python manage.py generate_assignments configs/test_config.yaml
+```
 
 The parameters from `configs/test_config.yaml` has the following content (update accordingly)
 
@@ -169,10 +178,12 @@ users:
   - user_j
   - user_k
 seed: 42
-max_lesions: 3
+max_lesions: 5
 enable_factors:
   - image_mode
 ```
+
+This command creates `Dermatologist` and `Assignment` rows in the database. Pre-seeded users can log in immediately without registering. In production, this step is typically **not needed** since users self-register.
 
 ### Deployment after Updates to Database
 
@@ -208,12 +219,11 @@ python manage.py showmigrations
 
 ### Updating Server after New Annotations/Predictions Arrive
 
-Re-parse, regenerate assignments, then run the server.
+Re-parse and run the server. User assignments are managed automatically via the database.
 
 ```bash
 cd revlm_dc
 python manage.py parsedata
-python manage.py generate_assignments configs/test_config.yaml
 python manage.py runserver
 ```
 
@@ -237,7 +247,7 @@ Follow the instructions from this tutorial to deploy the server on [Azure](https
 
 # Production Deployment
 
-Follow `revml_dc/DEPLOYMENT.md`.
+Follow `revlm_dc/DEPLOYMENT.md`.
 
 ## Pulling Changes to Server
 

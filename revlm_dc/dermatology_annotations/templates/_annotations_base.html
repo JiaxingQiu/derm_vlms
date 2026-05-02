@@ -100,10 +100,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .done-shell{max-width:720px;margin:48px auto;padding:0 24px}
 .done-form{display:flex;gap:12px;margin-top:20px}
 
-.anno-header{background:#fff;border-bottom:1px solid #e0e0e0;padding:14px 24px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;position:sticky;top:0;z-index:100}
-.anno-header h1{font-size:1.2rem;color:#1a1a2e;white-space:nowrap}
-.header-prompt{font-size:.72rem;line-height:1.3;color:#9ca3af;max-width:720px}
-.hctl{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-left:auto}
+.anno-header{background:#fff;border-bottom:1px solid #e0e0e0;padding:10px 24px;display:flex;align-items:center;gap:16px;position:sticky;top:0;z-index:100}
+.anno-header h1{font-size:1.2rem;color:#1a1a2e;white-space:nowrap;flex-shrink:0}
+.header-prompt{font-size:.72rem;line-height:1.3;color:#9ca3af;flex:1;min-width:0;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.hctl{display:flex;align-items:center;gap:14px;flex-shrink:0;margin-left:auto}
 .progress{font-size:.9rem;color:#555;font-weight:500}
 .meta-line{font-size:.85rem;color:#5b6474;font-weight:500}
 .logout-link{color:#335c67;font-weight:600;font-size:.85rem;white-space:nowrap}

@@ -16,7 +16,7 @@
         <div class="crop-hint">Use Crop &#x2702; to select a region as evidence for any part of your feedback</div>
 
         <div class="field" id="diag-section">
-            <div class="field-label">AI Diagnoses <span style="color:#dc3545">*</span></div>
+            <div class="field-label">AI Diagnoses</div>
             <div class="diag-list" id="diag-list"></div>
         </div>
     </div>
@@ -48,8 +48,8 @@
 .diag-ok{color:#059669}
 .diag-ok:hover{background:#ecfdf5;border-color:#6ee7b7}
 .diag-ok.active{background:#059669;color:#fff;border-color:#059669}
-.diag-no{color:#dc2626}
-.diag-no:hover{background:#fef2f2;border-color:#fca5a5}
+.diag-no{color:#6b7280;font-size:.8rem;padding:0 10px;width:auto}
+.diag-no:hover{background:#f3f4f6;border-color:#9ca3af}
 .diag-no.active{background:#dc2626;color:#fff;border-color:#dc2626}
 
 .diag-expand{padding:0 12px 12px 12px;border-top:1px dashed #fca5a5;background:#fff;display:none}
@@ -201,7 +201,6 @@
     isPageComplete = function () {
         for (var i = 0; i < state.diagnosis_feedback.length; i++) {
             var d = state.diagnosis_feedback[i];
-            if (d.label !== 'correct' && d.label !== 'incorrect') return false;
             if (d.label === 'incorrect' && !(d.correct_differential || '').trim()) return false;
         }
         return true;
@@ -289,11 +288,6 @@
         var row = document.createElement('div');
         row.className = 'reason-row';
         var wasEdited = edit.edited !== edit.original;
-
-        var num = document.createElement('span');
-        num.className = 'reason-num';
-        num.textContent = (sIdx + 1) + '.';
-        row.appendChild(num);
 
         var body = document.createElement('div');
         body.className = 'reason-body';
@@ -411,14 +405,13 @@
         var actions = document.createElement('div');
         actions.className = 'diag-actions';
 
-        var btnOk = document.createElement('button');
-        btnOk.type = 'button';
-        btnOk.className = 'diag-btn diag-ok' + (diag.label === 'correct' ? ' active' : '');
-        btnOk.innerHTML = '&#x2713;';
-        btnOk.onclick = function () {
-            diag.label = diag.label === 'correct' ? '' : 'correct';
-            if (diag.label === 'correct') {
-                // Clicking correct discards any drafted correction state.
+        var btnNo = document.createElement('button');
+        btnNo.type = 'button';
+        btnNo.className = 'diag-btn diag-no' + (diag.label === 'incorrect' ? ' active' : '');
+        btnNo.textContent = 'Edit';
+        btnNo.onclick = function () {
+            diag.label = diag.label === 'incorrect' ? '' : 'incorrect';
+            if (diag.label !== 'incorrect') {
                 diag.correct_differential = '';
                 diag.correct_differential_crops = [];
                 diag.reasoning_edits.forEach(function (e) {
@@ -427,17 +420,6 @@
                     e.editorOpen = false;
                 });
             }
-            syncHiddenPayload();
-            render();
-        };
-        actions.appendChild(btnOk);
-
-        var btnNo = document.createElement('button');
-        btnNo.type = 'button';
-        btnNo.className = 'diag-btn diag-no' + (diag.label === 'incorrect' ? ' active' : '');
-        btnNo.innerHTML = '&#x2717;';
-        btnNo.onclick = function () {
-            diag.label = diag.label === 'incorrect' ? '' : 'incorrect';
             syncHiddenPayload();
             render();
         };
@@ -450,31 +432,12 @@
         var exp = document.createElement('div');
         exp.className = 'diag-expand';
 
-        if (diag.reasoning_edits.length) {
-            var rLabel = document.createElement('div');
-            rLabel.className = 'sub-label';
-            rLabel.textContent = 'AI reasoning';
-            exp.appendChild(rLabel);
-
-            var rList = document.createElement('div');
-            rList.className = 'reason-list';
-            diag.reasoning_edits.forEach(function (edit, sIdx) {
-                rList.appendChild(renderReasonRow(diag, dIdx, edit, sIdx));
-            });
-            exp.appendChild(rList);
-        }
-
         var cdWrap = document.createElement('div');
         cdWrap.className = 'correct-diff';
 
-        var cdLabel = document.createElement('div');
-        cdLabel.className = 'sub-label';
-        cdLabel.innerHTML = 'Correct differential <span style="color:#dc3545">*</span>';
-        cdWrap.appendChild(cdLabel);
-
         var cdTa = document.createElement('textarea');
         cdTa.rows = 1;
-        cdTa.placeholder = 'Please enter the correct differential diagnosis';
+        cdTa.placeholder = "What's the more likely differential?";
         cdTa.dataset.kind = 'correct-diff';
         cdTa.dataset.diagIndex = String(dIdx);
         cdTa.value = diag.correct_differential;
@@ -490,6 +453,21 @@
         cdWrap.appendChild(cdEv);
 
         exp.appendChild(cdWrap);
+
+        if (diag.reasoning_edits.length) {
+            var rLabel = document.createElement('div');
+            rLabel.className = 'sub-label';
+            rLabel.textContent = 'AI reasoning';
+            exp.appendChild(rLabel);
+
+            var rList = document.createElement('div');
+            rList.className = 'reason-list';
+            diag.reasoning_edits.forEach(function (edit, sIdx) {
+                rList.appendChild(renderReasonRow(diag, dIdx, edit, sIdx));
+            });
+            exp.appendChild(rList);
+        }
+
         card.appendChild(exp);
 
         // Defer evidence render until element is in the DOM.

@@ -245,7 +245,9 @@ def normalize_diagnosis_feedback(items, ai_diagnoses):
     out = []
     for idx, ai_d in enumerate(ai_diagnoses or []):
         raw = by_idx.get(idx, {})
-        label = _LABEL_MAP.get(raw.get("label") or "", "")
+        raw_label = raw.get("label") or ""
+        # No action = user agrees with the diagnosis → store as "correct"
+        label = _LABEL_MAP.get(raw_label, "correct")
         reasoning_edits = normalize_reasoning_edits(
             raw.get("reasoning_edits"),
             ai_d.get("reasoning_sentences", []),
@@ -345,8 +347,6 @@ def is_page_complete(annotation, model_key, case_data):
 
     for item in feedback[: len(ai_diagnoses)]:
         label = (item or {}).get("label") or ""
-        if label not in ("correct", "incorrect"):
-            return False
         if label == "incorrect" and not (item.get("correct_differential") or "").strip():
             return False
     return True

@@ -70,12 +70,20 @@ class AnnotationAdmin(admin.ModelAdmin):
         "case_id",
         "model",
         "short_feedback",
+        "order_display",
         "first_completion_display",
         "updated_at",
     )
     list_filter = ("dermatologist",)
     search_fields = ("dermatologist__login_id", "case_id", "model")
-    readonly_fields = ("first_entered_at", "first_completed_at")
+    readonly_fields = ("first_entered_at", "first_completed_at", "diagnosis_order")
+
+    def order_display(self, obj):
+        order = obj.diagnosis_order
+        if not order:
+            return "—"
+        return " → ".join(str(i + 1) for i in order)
+    order_display.short_description = "user order"
 
     def short_feedback(self, obj):
         slots = [
@@ -168,6 +176,7 @@ class DermatologistAdmin(admin.ModelAdmin):
             "diag_1_name", "diag_1_label", "reasoning_1", "diag_1_correct_differential",
             "diag_2_name", "diag_2_label", "reasoning_2", "diag_2_correct_differential",
             "diag_3_name", "diag_3_label", "reasoning_3", "diag_3_correct_differential",
+            "diagnosis_order",
             "other_feedback",
             "first_entered_at",
             "first_completed_at",
@@ -216,6 +225,7 @@ class DermatologistAdmin(admin.ModelAdmin):
                 per_diag_cols[base + 3] = correct_diff
 
             other_fb_export = inline_tc(ann.other_feedback)
+            order_export = json.dumps(ann.diagnosis_order) if ann.diagnosis_order else ""
             d = ann.dermatologist
 
             writer.writerow([
@@ -227,6 +237,7 @@ class DermatologistAdmin(admin.ModelAdmin):
                 ann.model,
                 ann.raw_response,
                 *per_diag_cols,
+                order_export,
                 other_fb_export,
                 ann.first_entered_at.isoformat() if ann.first_entered_at else "",
                 ann.first_completed_at.isoformat() if ann.first_completed_at else "",

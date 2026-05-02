@@ -154,36 +154,11 @@ python manage.py runserver 0.0.0.0:8000
 
 #### User management
 
-Users register themselves through the web interface (login page → "New? Register"). On registration, the system collects their full name, occupation, and institution, creates a `Dermatologist` record, and auto-assigns RCT-balanced lesions via the `Assignment` model.
+Users register themselves through the web interface (login page → "New? Register"). On registration, the system collects their full name, occupation, and institution, and auto-assigns RCT-balanced lesions.
 
-To **pre-seed test users** (e.g. for local development), use `generate_assignments`:
+#### Test account
 
-```bash
-python manage.py generate_assignments configs/test_config.yaml
-```
-
-The parameters from `configs/test_config.yaml` has the following content (update accordingly)
-
-```yaml
-users:
-  - user_a
-  - user_b
-  - user_c
-  - user_d
-  - user_e
-  - user_f
-  - user_g
-  - user_h
-  - user_i
-  - user_j
-  - user_k
-seed: 42
-max_lesions: 5
-enable_factors:
-  - image_mode
-```
-
-This command creates `Dermatologist` and `Assignment` rows in the database. Pre-seeded users can log in immediately without registering. In production, this step is typically **not needed** since users self-register.
+A built-in `test` username is available for demo purposes. Anyone can log in with username `test` — no registration required. Every login as `test` **wipes all previous annotations** and resets progress to page 1, so each session starts fresh.
 
 ### Deployment after Updates to Database
 

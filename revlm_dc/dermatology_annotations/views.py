@@ -303,6 +303,10 @@ def update_annotation_conditional(annotation, payload, model_key, case_data):
     elif not (annotation.other_feedback or {}).get("text"):
         annotation.other_feedback = dict(_EMPTY_TC)
 
+    raw_order = payload.get("diagnosis_order")
+    if isinstance(raw_order, list) and all(isinstance(x, int) for x in raw_order):
+        annotation.diagnosis_order = raw_order
+
 
 # ---------------------------------------------------------------------------
 # Page sequence / completion
@@ -418,6 +422,21 @@ def login_view(request):
         else:
             if not login_id:
                 error_message = "Please enter your username."
+            elif login_id == "test":
+                from .assignments import assign_cases_for_user
+                evaluator, created = Dermatologist.objects.get_or_create(
+                    login_id="test",
+                    defaults={"full_name": "Test User", "occupation": "Tester", "institution": "Demo"},
+                )
+                if created:
+                    assign_cases_for_user(evaluator)
+                Annotation.objects.filter(dermatologist=evaluator).delete()
+                evaluator.current_case_index = 0
+                evaluator.current_model_index = 0
+                evaluator.is_done = False
+                evaluator.save()
+                raw_token, _ = create_tab_auth_session(login_id)
+                return redirect(auth_url("annotations", raw_token))
             elif not Dermatologist.objects.filter(login_id=login_id).exists():
                 error_message = "Username not found. Please register first."
             else:
@@ -606,6 +625,7 @@ def annotations_view(request):
     of = annotation.other_feedback or _EMPTY_TC
     saved_model_review = {
         "diagnosis_feedback": _merge_review_from_fields(annotation),
+        "diagnosis_order": annotation.diagnosis_order or [],
         "other_feedback": of.get("text", ""),
         "other_feedback_crops": of.get("crops", []),
     }

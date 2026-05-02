@@ -91,6 +91,10 @@ class Annotation(models.Model):
     reasoning_3 = models.JSONField(default=list, blank=True)
     # {text, crops: [{x,y,w,h},...]}
     other_feedback = models.JSONField(default=_empty_text_crops, blank=True)
+    # User-preferred ordering of the 3 AI diagnoses.
+    # [] = accepted AI's original order (equivalent to [0, 1, 2]).
+    # [2, 0, 1] = user moved AI's #3 to rank 1, AI's #1 to rank 2, AI's #2 to rank 3.
+    diagnosis_order = models.JSONField(default=list, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

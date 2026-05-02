@@ -35,10 +35,13 @@
 
 {% block interface_css %}
 .diag-list{display:flex;flex-direction:column;gap:10px}
-.diag-card{border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc;overflow:hidden;transition:background .15s}
+.diag-row{display:flex;align-items:stretch;gap:0}
+.diag-rank{min-width:28px;display:flex;align-items:center;justify-content:center;font-weight:700;color:#475569;font-size:.9rem}
+.diag-card{flex:1;border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc;overflow:hidden;transition:background .15s}
 .diag-card.lbl-incorrect{background:#fef2f2;border-color:#fecaca}
 .diag-head{display:flex;align-items:center;gap:8px;padding:8px 12px}
-.diag-num{font-weight:700;color:#475569;font-size:.9rem;min-width:20px}
+.drag-handle{cursor:grab;color:#9ca3af;font-size:1.1rem;padding:0 4px;user-select:none;line-height:1}
+.drag-handle:active{cursor:grabbing}
 .diag-name{flex:1;font-size:.9rem;font-weight:700;color:#1f2937;line-height:1.4}
 .diag-actions{display:flex;gap:6px;flex-shrink:0}
 .diag-btn{width:30px;height:30px;border-radius:6px;border:1px solid #d1d5db;background:#fff;cursor:pointer;font-size:.9rem;display:flex;align-items:center;justify-content:center;transition:all .15s}
@@ -78,6 +81,7 @@
 .survey{display:flex;flex-direction:column;gap:10px}
 .survey textarea{width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:.9rem;font-family:inherit;resize:vertical;min-height:60px;line-height:1.5}
 .survey textarea:focus{outline:none;border-color:#2563eb;box-shadow:0 0 0 2px rgba(37,99,235,.15)}
+.sortable-ghost .diag-card{opacity:.4;border:2px dashed #94a3b8}
 {% endblock %}
 
 {% block interface_js %}
@@ -186,6 +190,7 @@
                     correct_differential_crops: d.correct_differential_crops || []
                 };
             }),
+            diagnosis_order: state.diagnosis_order || [],
             other_feedback: state.other_feedback,
             other_feedback_crops: state.other_feedback_crops || []
         };
@@ -387,15 +392,16 @@
     function renderDiagnosisCard(diag, dIdx) {
         var card = document.createElement('div');
         card.className = 'diag-card' + (diag.label ? ' lbl-' + diag.label : '');
+        card.dataset.diagIndex = String(dIdx);
 
-        // --- Head row (name + label buttons) ---
+        // --- Head row (drag handle + name + label buttons) ---
         var head = document.createElement('div');
         head.className = 'diag-head';
 
-        var numEl = document.createElement('span');
-        numEl.className = 'diag-num';
-        numEl.textContent = (dIdx + 1) + '.';
-        head.appendChild(numEl);
+        var handle = document.createElement('span');
+        handle.className = 'drag-handle';
+        handle.innerHTML = '&#x2630;';
+        head.appendChild(handle);
 
         var nameEl = document.createElement('span');
         nameEl.className = 'diag-name';
@@ -492,6 +498,17 @@
         return card;
     }
 
+    // --- Diagnosis ordering ---
+    // diagnosis_order maps visual position → original AI index.
+    // e.g. [2, 0, 1] means: rank 1 shows AI's #3, rank 2 shows AI's #1, etc.
+    var savedOrder = savedReview.diagnosis_order || [];
+    if (!Array.isArray(savedOrder) || savedOrder.length !== state.diagnosis_feedback.length) {
+        savedOrder = state.diagnosis_feedback.map(function (_, i) { return i; });
+    }
+    state.diagnosis_order = savedOrder.slice();
+
+    var _sortableInstance = null;
+
     render = function () {
         hideNavWarning();
         var listEl = document.getElementById('diag-list');
@@ -501,8 +518,36 @@
         } else {
             sectionEl.style.display = '';
             listEl.innerHTML = '';
-            state.diagnosis_feedback.forEach(function (diag, dIdx) {
-                listEl.appendChild(renderDiagnosisCard(diag, dIdx));
+            state.diagnosis_order.forEach(function (origIdx, rank) {
+                var diag = state.diagnosis_feedback[origIdx];
+                var row = document.createElement('div');
+                row.className = 'diag-row';
+                row.dataset.origIndex = String(origIdx);
+
+                var rankEl = document.createElement('div');
+                rankEl.className = 'diag-rank';
+                rankEl.textContent = (rank + 1) + '.';
+                row.appendChild(rankEl);
+
+                row.appendChild(renderDiagnosisCard(diag, origIdx));
+                listEl.appendChild(row);
+            });
+
+            if (_sortableInstance) _sortableInstance.destroy();
+            _sortableInstance = Sortable.create(listEl, {
+                handle: '.drag-handle',
+                animation: 150,
+                ghostClass: 'sortable-ghost',
+                onEnd: function () {
+                    var rows = listEl.querySelectorAll('.diag-row');
+                    var newOrder = [];
+                    rows.forEach(function (r, rank) {
+                        newOrder.push(Number(r.dataset.origIndex));
+                        r.querySelector('.diag-rank').textContent = (rank + 1) + '.';
+                    });
+                    state.diagnosis_order = newOrder;
+                    syncHiddenPayload();
+                }
             });
         }
         renderFieldEvidenceInto(document.getElementById('other-feedback-ev'), otherFeedbackEl);

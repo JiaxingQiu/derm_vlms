@@ -21,7 +21,7 @@ FACTORS = {
 
 DEFAULT_SEED = 42
 DEFAULT_MAX_LESIONS = 5
-DEFAULT_ENABLED_FACTORS = ("image_mode",)
+DEFAULT_ENABLED_FACTORS = ()  # () = all users see default "combined"; ("image_mode",) = randomize photo/dscope/combined per user
 
 
 def _stable_hash(seed, *parts):

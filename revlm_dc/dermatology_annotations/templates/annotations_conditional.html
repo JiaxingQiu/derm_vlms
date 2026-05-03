@@ -56,13 +56,14 @@
 .reason-list{display:flex;flex-direction:column;gap:6px}
 .reason-row{display:flex;align-items:flex-start;gap:8px;padding:6px 8px;border:1px solid #e5e7eb;border-radius:6px;background:#fafafa;transition:border-color .15s,box-shadow .15s;cursor:default}
 .reason-row:hover{border-color:#f97316;box-shadow:0 0 0 1px rgba(249,115,22,.25)}
+.reason-row.reason-editing{border-color:#f97316;box-shadow:0 0 0 1px rgba(249,115,22,.25);background:#fff}
 .reason-num{color:#9ca3af;font-size:.75rem;font-weight:600;min-width:18px;padding-top:3px}
 .reason-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
-.reason-text{font-size:.9rem;color:#374151;line-height:1.45;word-wrap:break-word;font-weight:400}
+.reason-text{font-size:.9rem;color:#374151;line-height:1.45;word-wrap:break-word;font-weight:400;cursor:text}
 .reason-text del{color:#b91c1c;text-decoration:line-through;background:#fee2e2;padding:0 1px;border-radius:2px;text-decoration-thickness:1.5px}
 .reason-text ins{color:#047857;text-decoration:underline;background:#d1fae5;padding:0 1px;border-radius:2px;text-decoration-thickness:1.5px}
-.reason-textarea{width:100%;padding:6px 10px;border:1px solid #c7d2fe;border-radius:5px;font-size:.9rem;font-family:inherit;resize:vertical;min-height:44px;line-height:1.45;background:#fff;color:#1f2937}
-.reason-textarea:focus{outline:none;border-color:#4338ca;box-shadow:0 0 0 2px rgba(67,56,202,.12)}
+.reason-textarea{width:100%;padding:4px 6px;border:none;font-size:.9rem;font-family:inherit;resize:vertical;min-height:44px;line-height:1.45;background:transparent;color:#1f2937}
+.reason-textarea:focus{outline:none;border:none;box-shadow:none}
 .reason-actions{display:flex;gap:5px;flex-shrink:0;padding-top:2px}
 .reason-btn{padding:3px 10px;border-radius:5px;border:1px solid #d1d5db;background:#fff;cursor:pointer;font-size:.72rem;color:#4b5563;transition:all .15s;display:flex;align-items:center;gap:3px}
 .reason-btn:hover{background:#f3f4f6;border-color:#9ca3af}
@@ -125,6 +126,8 @@
                     edited: typeof savedEdit.edited === 'string' ? savedEdit.edited : String(original || ''),
                     crops: Array.isArray(savedEdit.crops) ? savedEdit.crops : [],
                     grounding_box: gbox,
+                    _hasGroundingCrop: false,
+                    _groundingCropIdx: -1,
                     editorOpen: false
                 };
             });
@@ -294,7 +297,7 @@
     // --- Render ---
     function renderReasonRow(diag, dIdx, edit, sIdx) {
         var row = document.createElement('div');
-        row.className = 'reason-row';
+        row.className = 'reason-row' + (edit.editorOpen ? ' reason-editing' : '');
         var wasEdited = edit.edited !== edit.original;
 
         row.addEventListener('mouseenter', function () {
@@ -328,15 +331,18 @@
                 var result = deactivateGroundingEditor();
                 if (result.modified) {
                     var box = { x: result.box.x, y: result.box.y, w: result.box.w, h: result.box.h };
-                    if (edit.crops.length === 0) {
-                        edit.crops = [box];
-                        var marker = '[ev 1] ';
-                        if (ta.value.indexOf('[ev 1]') === -1) {
+                    if (!edit._hasGroundingCrop) {
+                        edit.crops.push(box);
+                        edit._groundingCropIdx = edit.crops.length - 1;
+                        edit._hasGroundingCrop = true;
+                        var evNum = edit.crops.length;
+                        var marker = '[ev ' + evNum + '] ';
+                        if (ta.value.indexOf(marker.trim()) === -1) {
                             ta.value = marker + ta.value;
                             edit.edited = ta.value;
                         }
                     } else {
-                        edit.crops[0] = box;
+                        edit.crops[edit._groundingCropIdx] = box;
                     }
                 }
                 edit.editorOpen = false;
@@ -366,11 +372,14 @@
             var textEl = document.createElement('div');
             textEl.className = 'reason-text';
             if (wasEdited) {
-                // Google-Docs-style inline diff: struck-through removals + underlined additions.
                 renderInlineDiffInto(textEl, edit.original, edit.edited);
             } else {
                 textEl.textContent = edit.edited;
             }
+            textEl.addEventListener('click', function () {
+                edit.editorOpen = true;
+                render();
+            });
             body.appendChild(textEl);
         }
 
@@ -378,18 +387,6 @@
 
         var actions = document.createElement('div');
         actions.className = 'reason-actions';
-
-        if (!edit.editorOpen) {
-            var btnEdit = document.createElement('button');
-            btnEdit.type = 'button';
-            btnEdit.className = 'reason-btn';
-            btnEdit.textContent = 'Edit';
-            btnEdit.onclick = function () {
-                edit.editorOpen = true;
-                render();
-            };
-            actions.appendChild(btnEdit);
-        }
 
         if (wasEdited) {
             var btnRevert = document.createElement('button');
@@ -403,6 +400,14 @@
             btnRevert.onclick = function () {
                 edit.edited = edit.original;
                 edit.crops = [];
+                edit._hasGroundingCrop = false;
+                edit._groundingCropIdx = -1;
+                edit.grounding_box = {
+                    x: Math.random() * 0.9,
+                    y: Math.random() * 0.75,
+                    w: 0.1,
+                    h: 0.25
+                };
                 edit.editorOpen = false;
                 syncHiddenPayload();
                 render();

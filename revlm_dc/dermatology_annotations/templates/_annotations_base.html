@@ -58,6 +58,14 @@
                         </div>
                         <div class="grounding-box" id="grounding-box">
                             <span class="grounding-label" id="grounding-label"></span>
+                            <div class="gb-handle gb-h-nw" data-dir="nw"></div>
+                            <div class="gb-handle gb-h-n"  data-dir="n"></div>
+                            <div class="gb-handle gb-h-ne" data-dir="ne"></div>
+                            <div class="gb-handle gb-h-e"  data-dir="e"></div>
+                            <div class="gb-handle gb-h-se" data-dir="se"></div>
+                            <div class="gb-handle gb-h-s"  data-dir="s"></div>
+                            <div class="gb-handle gb-h-sw" data-dir="sw"></div>
+                            <div class="gb-handle gb-h-w"  data-dir="w"></div>
                         </div>
                     </div>
                     <div class="img-id" id="img-id">{{ case_id }}</div>
@@ -132,8 +140,19 @@ main{max-width:none;margin:0;padding:8px 12px}
 .img-container img{position:absolute;top:0;left:0;transform-origin:0 0;user-select:none;-webkit-user-drag:none}
 .crop-overlay{position:absolute;inset:0;display:none;z-index:10}
 .crop-sel{position:absolute;border:2px solid #2563eb;background:rgba(37,99,235,.12);pointer-events:none}
-.grounding-box{position:absolute;display:none;border:3px solid #f97316;background:transparent;pointer-events:none;z-index:11;transition:left .12s ease,top .12s ease,width .12s ease,height .12s ease}
-.grounding-label{position:absolute;bottom:100%;left:0;background:#f97316;color:#fff;font-size:.72rem;font-weight:600;padding:2px 8px;border-radius:3px 3px 0 0;white-space:nowrap;max-width:320px;overflow:hidden;text-overflow:ellipsis;line-height:1.4}
+.grounding-box{position:absolute;display:none;border:3px solid #f97316;background:transparent;pointer-events:none;z-index:11}
+.grounding-box.gb-editing{pointer-events:auto;cursor:move}
+.grounding-label{position:absolute;bottom:100%;left:0;background:#f97316;color:#fff;font-size:.72rem;font-weight:600;padding:2px 8px;border-radius:3px 3px 0 0;white-space:nowrap;max-width:320px;overflow:hidden;text-overflow:ellipsis;line-height:1.4;pointer-events:none}
+.gb-handle{position:absolute;width:10px;height:10px;background:#f97316;border:1.5px solid #fff;border-radius:2px;display:none;pointer-events:auto;z-index:12}
+.gb-editing .gb-handle{display:block}
+.gb-h-nw{top:-5px;left:-5px;cursor:nwse-resize}
+.gb-h-n{top:-5px;left:50%;margin-left:-5px;cursor:ns-resize}
+.gb-h-ne{top:-5px;right:-5px;cursor:nesw-resize}
+.gb-h-e{top:50%;margin-top:-5px;right:-5px;cursor:ew-resize}
+.gb-h-se{bottom:-5px;right:-5px;cursor:nwse-resize}
+.gb-h-s{bottom:-5px;left:50%;margin-left:-5px;cursor:ns-resize}
+.gb-h-sw{bottom:-5px;left:-5px;cursor:nesw-resize}
+.gb-h-w{top:50%;margin-top:-5px;left:-5px;cursor:ew-resize}
 .img-id{padding:6px 12px;font-size:.82rem;color:#888;text-align:center;background:#f9fafb;border-top:1px solid #e5e7eb}
 
 .task-sec{background:#fff;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.08);margin-bottom:18px;overflow:hidden}
@@ -448,12 +467,31 @@ main{max-width:none;margin:0;padding:8px 12px}
         };
     }
 
-    /* ===== Visual grounding box ===== */
+    /* ===== Visual grounding box + interactive editor ===== */
     var groundingBoxEl = document.getElementById('grounding-box');
     var groundingLabelEl = document.getElementById('grounding-label');
     var _activeGroundingBox = null;
 
+    // --- Editor state ---
+    var _gbEditor = {
+        active: false,
+        box: null,
+        modified: false,
+        onChange: null,
+        dragging: false,
+        dragStartX: 0, dragStartY: 0,
+        dragOrigX: 0, dragOrigY: 0,
+        resizing: false,
+        resizeDir: null,
+        resizeStartX: 0, resizeStartY: 0,
+        resizeOrigBox: null
+    };
+
+    var GB_MIN_DIM = 0.02;
+
+    // --- Passive hover show/hide (unchanged) ---
     function showGroundingBox(normBox, labelText) {
+        if (_gbEditor.active) return;
         _activeGroundingBox = normBox;
         groundingLabelEl.textContent = labelText || '';
         positionGroundingBox();
@@ -461,6 +499,7 @@ main{max-width:none;margin:0;padding:8px 12px}
     }
 
     function hideGroundingBox() {
+        if (_gbEditor.active) return;
         _activeGroundingBox = null;
         groundingBoxEl.style.display = 'none';
     }
@@ -476,6 +515,123 @@ main{max-width:none;margin:0;padding:8px 12px}
         groundingBoxEl.style.width = (b.w * vs.baseW * vs.zoom) + 'px';
         groundingBoxEl.style.height = (b.h * vs.baseH * vs.zoom) + 'px';
     }
+
+    // --- Activate interactive editor ---
+    function activateGroundingEditor(normBox, labelText, onChange) {
+        _gbEditor.active = true;
+        _gbEditor.box = normBox;
+        _gbEditor.modified = false;
+        _gbEditor.onChange = onChange || null;
+        _activeGroundingBox = normBox;
+        groundingLabelEl.textContent = labelText || '';
+        groundingBoxEl.classList.add('gb-editing');
+        positionGroundingBox();
+        groundingBoxEl.style.display = 'block';
+    }
+
+    function deactivateGroundingEditor() {
+        var result = { box: _gbEditor.box, modified: _gbEditor.modified };
+        _gbEditor.active = false;
+        _gbEditor.dragging = false;
+        _gbEditor.resizing = false;
+        _gbEditor.onChange = null;
+        groundingBoxEl.classList.remove('gb-editing');
+        groundingBoxEl.style.display = 'none';
+        _activeGroundingBox = null;
+        return result;
+    }
+
+    function _pxToNormDelta(dxPx, dyPx) {
+        return {
+            dx: dxPx / (vs.baseW * vs.zoom),
+            dy: dyPx / (vs.baseH * vs.zoom)
+        };
+    }
+
+    // --- Drag: mousedown on box body ---
+    groundingBoxEl.addEventListener('mousedown', function (e) {
+        if (!_gbEditor.active) return;
+        if (e.target.classList.contains('gb-handle')) return;
+        if (e.button !== 0) return;
+        e.preventDefault();
+        e.stopPropagation();
+        _gbEditor.dragging = true;
+        _gbEditor.dragStartX = e.clientX;
+        _gbEditor.dragStartY = e.clientY;
+        _gbEditor.dragOrigX = _gbEditor.box.x;
+        _gbEditor.dragOrigY = _gbEditor.box.y;
+    });
+
+    // --- Resize: mousedown on handle ---
+    groundingBoxEl.addEventListener('mousedown', function (e) {
+        if (!_gbEditor.active) return;
+        var handle = e.target.closest('.gb-handle');
+        if (!handle) return;
+        if (e.button !== 0) return;
+        e.preventDefault();
+        e.stopPropagation();
+        _gbEditor.resizing = true;
+        _gbEditor.resizeDir = handle.dataset.dir;
+        _gbEditor.resizeStartX = e.clientX;
+        _gbEditor.resizeStartY = e.clientY;
+        _gbEditor.resizeOrigBox = {
+            x: _gbEditor.box.x, y: _gbEditor.box.y,
+            w: _gbEditor.box.w, h: _gbEditor.box.h
+        };
+    }, true);
+
+    // --- Mousemove (drag + resize) ---
+    window.addEventListener('mousemove', function (e) {
+        if (_gbEditor.dragging) {
+            var d = _pxToNormDelta(e.clientX - _gbEditor.dragStartX, e.clientY - _gbEditor.dragStartY);
+            var b = _gbEditor.box;
+            b.x = Math.max(0, Math.min(1 - b.w, _gbEditor.dragOrigX + d.dx));
+            b.y = Math.max(0, Math.min(1 - b.h, _gbEditor.dragOrigY + d.dy));
+            positionGroundingBox();
+        }
+        if (_gbEditor.resizing) {
+            var d = _pxToNormDelta(e.clientX - _gbEditor.resizeStartX, e.clientY - _gbEditor.resizeStartY);
+            var o = _gbEditor.resizeOrigBox;
+            var b = _gbEditor.box;
+            var dir = _gbEditor.resizeDir;
+
+            var nx = o.x, ny = o.y, nw = o.w, nh = o.h;
+
+            if (dir.indexOf('e') !== -1) {
+                nw = Math.max(GB_MIN_DIM, Math.min(1 - nx, o.w + d.dx));
+            }
+            if (dir.indexOf('w') !== -1) {
+                var newX = Math.max(0, Math.min(o.x + o.w - GB_MIN_DIM, o.x + d.dx));
+                nw = o.w + (o.x - newX);
+                nx = newX;
+            }
+            if (dir.indexOf('s') !== -1) {
+                nh = Math.max(GB_MIN_DIM, Math.min(1 - ny, o.h + d.dy));
+            }
+            if (dir.indexOf('n') !== -1) {
+                var newY = Math.max(0, Math.min(o.y + o.h - GB_MIN_DIM, o.y + d.dy));
+                nh = o.h + (o.y - newY);
+                ny = newY;
+            }
+
+            b.x = nx; b.y = ny; b.w = nw; b.h = nh;
+            positionGroundingBox();
+        }
+    });
+
+    // --- Mouseup (end drag / resize) ---
+    window.addEventListener('mouseup', function () {
+        if (_gbEditor.dragging) {
+            _gbEditor.dragging = false;
+            _gbEditor.modified = true;
+            if (_gbEditor.onChange) _gbEditor.onChange(_gbEditor.box);
+        }
+        if (_gbEditor.resizing) {
+            _gbEditor.resizing = false;
+            _gbEditor.modified = true;
+            if (_gbEditor.onChange) _gbEditor.onChange(_gbEditor.box);
+        }
+    });
 
     var _origUpdateTransform = updateTransform;
     updateTransform = function () {
@@ -525,6 +681,7 @@ main{max-width:none;margin:0;padding:8px 12px}
 
     containerEl.addEventListener('mousedown', function (e) {
         if (vs.cropMode || e.button !== 0) return;
+        if (_gbEditor.active && e.target.closest('#grounding-box')) return;
         vs.isPanning = true;
         vs.panStartX = e.clientX; vs.panStartY = e.clientY;
         vs.panOrigX = vs.panX; vs.panOrigY = vs.panY;

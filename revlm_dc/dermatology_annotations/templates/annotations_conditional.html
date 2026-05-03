@@ -294,7 +294,8 @@
         var wasEdited = edit.edited !== edit.original;
 
         row.addEventListener('mouseenter', function () {
-            var truncated = edit.edited.length > 60 ? edit.edited.substring(0, 57) + '...' : edit.edited;
+            var clean = edit.edited.replace(/\[ev\s+\d+\]\s?/g, '');
+            var truncated = clean.length > 60 ? clean.substring(0, 57) + '...' : clean;
             showGroundingBox(edit.grounding_box, truncated);
         });
         row.addEventListener('mouseleave', function () {
@@ -319,23 +320,38 @@
                 syncFieldCrops(ta);
                 syncHiddenPayload();
             });
-            // Clicking anywhere outside the textarea closes the editor
-            // (keeping the latest edited text). Buttons that should NOT
-            // close the editor prevent this by calling preventDefault on
-            // their own mousedown (so the textarea never loses focus).
             ta.addEventListener('blur', function () {
+                var result = deactivateGroundingEditor();
+                if (result.modified) {
+                    var box = { x: result.box.x, y: result.box.y, w: result.box.w, h: result.box.h };
+                    if (edit.crops.length === 0) {
+                        edit.crops = [box];
+                        var marker = '[ev 1] ';
+                        if (ta.value.indexOf('[ev 1]') === -1) {
+                            ta.value = marker + ta.value;
+                            edit.edited = ta.value;
+                        }
+                    } else {
+                        edit.crops[0] = box;
+                    }
+                }
                 edit.editorOpen = false;
+                syncHiddenPayload();
                 render();
             });
             body.appendChild(ta);
 
-            // Autofocus the textarea as soon as it's mounted so that a click
-            // anywhere outside it will fire the blur handler above.
             setTimeout(function () {
                 if (document.body.contains(ta)) {
                     ta.focus();
                     try { ta.setSelectionRange(ta.value.length, ta.value.length); } catch (_) {}
                 }
+                var clean = edit.edited.replace(/\[ev\s+\d+\]\s?/g, '');
+                var truncated = clean.length > 60 ? clean.substring(0, 57) + '...' : clean;
+                activateGroundingEditor(edit.grounding_box, truncated, function (updatedBox) {
+                    edit.grounding_box = updatedBox;
+                    syncHiddenPayload();
+                });
             }, 0);
 
             var evDiv = document.createElement('div');

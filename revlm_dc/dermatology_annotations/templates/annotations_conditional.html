@@ -38,22 +38,18 @@
 .diag-row{display:flex;align-items:stretch;gap:0}
 .diag-rank{min-width:28px;display:flex;align-items:flex-start;justify-content:center;font-weight:700;color:#475569;font-size:.9rem;padding-top:10px}
 .diag-card{flex:1;border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc;overflow:hidden;transition:background .15s}
-.diag-card.lbl-incorrect{background:#fef2f2;border-color:#fecaca}
-.diag-head{display:flex;align-items:center;gap:8px;padding:8px 12px}
+.diag-card.diag-expanded{background:#fff7ed;border-color:#fb923c}
+.diag-card.lbl-incorrect{border-color:#fb923c}
+.diag-head{display:flex;align-items:center;gap:8px;padding:8px 12px;cursor:pointer;user-select:none}
+.diag-head:hover{background:rgba(0,0,0,.03)}
 .drag-handle{cursor:grab;color:#9ca3af;font-size:1.1rem;padding:0 4px;user-select:none;line-height:1}
 .drag-handle:active{cursor:grabbing}
 .diag-name{flex:1;font-size:.9rem;font-weight:700;color:#1f2937;line-height:1.4}
-.diag-actions{display:flex;gap:6px;flex-shrink:0}
-.diag-btn{width:30px;height:30px;border-radius:6px;border:1px solid #d1d5db;background:#fff;cursor:pointer;font-size:.9rem;display:flex;align-items:center;justify-content:center;transition:all .15s}
-.diag-ok{color:#059669}
-.diag-ok:hover{background:#ecfdf5;border-color:#6ee7b7}
-.diag-ok.active{background:#059669;color:#fff;border-color:#059669}
-.diag-no{color:#6b7280;font-size:.8rem;padding:0 10px;width:auto}
-.diag-no:hover{background:#f3f4f6;border-color:#9ca3af}
-.diag-no.active{background:#dc2626;color:#fff;border-color:#dc2626}
+.diag-chevron{color:#9ca3af;font-size:.8rem;transition:transform .15s;flex-shrink:0}
+.diag-expanded .diag-chevron{transform:rotate(90deg)}
 
-.diag-expand{padding:0 12px 12px 12px;border-top:1px dashed #fca5a5;background:#fff;display:none}
-.diag-card.lbl-incorrect .diag-expand{display:block}
+.diag-expand{padding:0 12px 12px 12px;border-top:1px dashed #fb923c;background:#fff;display:none}
+.diag-card.diag-expanded .diag-expand{display:block}
 .diag-expand .sub-label{font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;color:#6b7280;font-weight:600;margin:10px 0 6px}
 .sub-label .req{color:#dc2626;font-weight:600;text-transform:none;letter-spacing:0;font-size:.68rem;margin-left:4px}
 
@@ -76,7 +72,7 @@
 
 .correct-diff{margin-top:10px}
 .correct-diff textarea{width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:.9rem;font-family:inherit;resize:vertical;line-height:1.5;background:#fff;color:#1f2937}
-.correct-diff textarea:focus{outline:none;border-color:#2563eb;box-shadow:0 0 0 2px rgba(37,99,235,.15)}
+.correct-diff textarea:focus{outline:none;border-color:#fb923c;box-shadow:0 0 0 2px rgba(251,146,60,.15)}
 .correct-diff textarea::placeholder{color:#9ca3af}
 
 .survey{display:flex;flex-direction:column;gap:10px}
@@ -135,6 +131,7 @@
             return {
                 name: String(aiD.name || savedD.name || ''),
                 label: (savedD.label === 'correct' || savedD.label === 'incorrect') ? savedD.label : '',
+                expanded: false,
                 reasoning_edits: reasoningEdits,
                 correct_differential: typeof savedD.correct_differential === 'string' ? savedD.correct_differential : '',
                 correct_differential_crops: Array.isArray(savedD.correct_differential_crops) ? savedD.correct_differential_crops : []
@@ -188,6 +185,13 @@
         var payload = {
             model_name: modelKey,
             diagnosis_feedback: state.diagnosis_feedback.map(function (d) {
+                var hasEdits = (d.correct_differential || '').trim() !== '';
+                if (!hasEdits) {
+                    d.reasoning_edits.forEach(function (e) {
+                        if (e.edited !== e.original) hasEdits = true;
+                    });
+                }
+                d.label = hasEdits ? 'incorrect' : '';
                 return {
                     name: d.name,
                     label: d.label,
@@ -413,10 +417,10 @@
 
     function renderDiagnosisCard(diag, dIdx) {
         var card = document.createElement('div');
-        card.className = 'diag-card' + (diag.label ? ' lbl-' + diag.label : '');
+        card.className = 'diag-card' + (diag.expanded ? ' diag-expanded' : '') + (diag.label === 'incorrect' ? ' lbl-incorrect' : '');
         card.dataset.diagIndex = String(dIdx);
 
-        // --- Head row (drag handle + name + label buttons) ---
+        // --- Head row (drag handle + name + chevron) ---
         var head = document.createElement('div');
         head.className = 'diag-head';
 
@@ -430,6 +434,11 @@
         nameEl.textContent = diag.name;
         head.appendChild(nameEl);
 
+        var chevron = document.createElement('span');
+        chevron.className = 'diag-chevron';
+        chevron.innerHTML = '&#x25B6;';
+        head.appendChild(chevron);
+
         head.addEventListener('mouseenter', function () {
             var items = diag.reasoning_edits.map(function (edit, sIdx) {
                 var clean = edit.edited.replace(/\[ev\s+\d+\]\s?/g, '');
@@ -442,33 +451,15 @@
             hideGroundingBoxes();
         });
 
-        var actions = document.createElement('div');
-        actions.className = 'diag-actions';
-
-        var btnNo = document.createElement('button');
-        btnNo.type = 'button';
-        btnNo.className = 'diag-btn diag-no' + (diag.label === 'incorrect' ? ' active' : '');
-        btnNo.textContent = 'Edit';
-        btnNo.onclick = function () {
-            diag.label = diag.label === 'incorrect' ? '' : 'incorrect';
-            if (diag.label !== 'incorrect') {
-                diag.correct_differential = '';
-                diag.correct_differential_crops = [];
-                diag.reasoning_edits.forEach(function (e) {
-                    e.edited = e.original;
-                    e.crops = [];
-                    e.editorOpen = false;
-                });
-            }
-            syncHiddenPayload();
+        head.addEventListener('click', function (e) {
+            if (e.target.closest('.drag-handle')) return;
+            diag.expanded = !diag.expanded;
             render();
-        };
-        actions.appendChild(btnNo);
+        });
 
-        head.appendChild(actions);
         card.appendChild(head);
 
-        // --- Expanded sub-panel (only when incorrect) ---
+        // --- Expanded sub-panel ---
         var exp = document.createElement('div');
         exp.className = 'diag-expand';
 
@@ -477,7 +468,7 @@
 
         var cdTa = document.createElement('textarea');
         cdTa.rows = 1;
-        cdTa.placeholder = "What's a more likely differential?";
+        cdTa.placeholder = "What differential diagnosis is more likely?";
         cdTa.dataset.kind = 'correct-diff';
         cdTa.dataset.diagIndex = String(dIdx);
         cdTa.value = diag.correct_differential;

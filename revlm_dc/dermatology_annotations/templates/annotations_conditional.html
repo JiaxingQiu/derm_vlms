@@ -430,6 +430,18 @@
         nameEl.textContent = diag.name;
         head.appendChild(nameEl);
 
+        head.addEventListener('mouseenter', function () {
+            var items = diag.reasoning_edits.map(function (edit, sIdx) {
+                var clean = edit.edited.replace(/\[ev\s+\d+\]\s?/g, '');
+                var truncated = clean.length > 50 ? clean.substring(0, 47) + '...' : clean;
+                return { box: edit.grounding_box, label: (sIdx + 1) + '. ' + truncated };
+            });
+            showGroundingBoxes(items);
+        });
+        head.addEventListener('mouseleave', function () {
+            hideGroundingBoxes();
+        });
+
         var actions = document.createElement('div');
         actions.className = 'diag-actions';
 

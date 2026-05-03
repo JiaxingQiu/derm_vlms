@@ -67,6 +67,10 @@
                             <div class="gb-handle gb-h-sw" data-dir="sw"></div>
                             <div class="gb-handle gb-h-w"  data-dir="w"></div>
                         </div>
+                        <div class="gb-multi-pool" id="gb-multi-pool">
+                            <div class="gb-multi-boxes" id="gb-multi-boxes"></div>
+                            <div class="gb-multi-labels" id="gb-multi-labels"></div>
+                        </div>
                     </div>
                     <div class="img-id" id="img-id">{{ case_id }}</div>
                 </div>
@@ -153,6 +157,11 @@ main{max-width:none;margin:0;padding:8px 12px}
 .gb-h-s{bottom:-5px;left:50%;margin-left:-5px;cursor:ns-resize}
 .gb-h-sw{bottom:-5px;left:-5px;cursor:nesw-resize}
 .gb-h-w{top:50%;margin-top:-5px;left:-5px;cursor:ew-resize}
+.gb-multi-pool{position:absolute;inset:0;pointer-events:none;z-index:11}
+.gb-multi-boxes{position:absolute;inset:0;z-index:0}
+.gb-multi-labels{position:absolute;inset:0;z-index:1}
+.gb-multi-box{position:absolute;border:3px solid #f97316;background:transparent;pointer-events:none}
+.gb-multi-label{position:absolute;pointer-events:none;background:#f97316;color:#fff;font-size:.68rem;font-weight:600;padding:1px 6px;border-radius:3px 3px 0 0;white-space:nowrap;max-width:280px;overflow:hidden;text-overflow:ellipsis;line-height:1.4}
 .img-id{padding:6px 12px;font-size:.82rem;color:#888;text-align:center;background:#f9fafb;border-top:1px solid #e5e7eb}
 
 .task-sec{background:#fff;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.08);margin-bottom:18px;overflow:hidden}
@@ -637,7 +646,56 @@ main{max-width:none;margin:0;padding:8px 12px}
     updateTransform = function () {
         _origUpdateTransform();
         positionGroundingBox();
+        _repositionMultiBoxes();
     };
+
+    /* ===== Multi-box grounding (diagnosis-level hover) ===== */
+    var _gbMultiBoxes = document.getElementById('gb-multi-boxes');
+    var _gbMultiLabels = document.getElementById('gb-multi-labels');
+    var _multiEntries = [];
+
+    function showGroundingBoxes(items) {
+        if (_gbEditor.active) return;
+        hideGroundingBoxes();
+        items.forEach(function (item) {
+            var boxEl = document.createElement('div');
+            boxEl.className = 'gb-multi-box';
+
+            var lblEl = document.createElement('div');
+            lblEl.className = 'gb-multi-label';
+            lblEl.textContent = item.label || '';
+
+            _gbMultiBoxes.appendChild(boxEl);
+            _gbMultiLabels.appendChild(lblEl);
+            _multiEntries.push({ boxEl: boxEl, lblEl: lblEl, normBox: item.box });
+        });
+        _repositionMultiBoxes();
+    }
+
+    function hideGroundingBoxes() {
+        _multiEntries.forEach(function (e) { e.boxEl.remove(); e.lblEl.remove(); });
+        _multiEntries = [];
+    }
+
+    function _repositionMultiBoxes() {
+        if (!_multiEntries.length) return;
+        var cw = containerEl.clientWidth, ch = containerEl.clientHeight;
+        var ox = (cw - vs.baseW * vs.zoom) / 2 + vs.panX;
+        var oy = (ch - vs.baseH * vs.zoom) / 2 + vs.panY;
+        _multiEntries.forEach(function (e) {
+            var b = e.normBox;
+            var l = ox + b.x * vs.baseW * vs.zoom;
+            var t = oy + b.y * vs.baseH * vs.zoom;
+            var w = b.w * vs.baseW * vs.zoom;
+            var h = b.h * vs.baseH * vs.zoom;
+            e.boxEl.style.left = l + 'px';
+            e.boxEl.style.top = t + 'px';
+            e.boxEl.style.width = w + 'px';
+            e.boxEl.style.height = h + 'px';
+            e.lblEl.style.left = l + 'px';
+            e.lblEl.style.top = (t - e.lblEl.offsetHeight) + 'px';
+        });
+    }
 
     /* ===== Status flash ===== */
     var saveTimer;

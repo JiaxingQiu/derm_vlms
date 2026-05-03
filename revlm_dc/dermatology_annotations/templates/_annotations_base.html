@@ -56,6 +56,9 @@
                         <div class="crop-overlay" id="crop-overlay">
                             <div class="crop-sel" id="crop-sel"></div>
                         </div>
+                        <div class="grounding-box" id="grounding-box">
+                            <span class="grounding-label" id="grounding-label"></span>
+                        </div>
                     </div>
                     <div class="img-id" id="img-id">{{ case_id }}</div>
                 </div>
@@ -129,6 +132,8 @@ main{max-width:none;margin:0;padding:8px 12px}
 .img-container img{position:absolute;top:0;left:0;transform-origin:0 0;user-select:none;-webkit-user-drag:none}
 .crop-overlay{position:absolute;inset:0;display:none;z-index:10}
 .crop-sel{position:absolute;border:2px solid #2563eb;background:rgba(37,99,235,.12);pointer-events:none}
+.grounding-box{position:absolute;display:none;border:3px solid #f97316;background:transparent;pointer-events:none;z-index:11;transition:left .12s ease,top .12s ease,width .12s ease,height .12s ease}
+.grounding-label{position:absolute;bottom:100%;left:0;background:#f97316;color:#fff;font-size:.72rem;font-weight:600;padding:2px 8px;border-radius:3px 3px 0 0;white-space:nowrap;max-width:320px;overflow:hidden;text-overflow:ellipsis;line-height:1.4}
 .img-id{padding:6px 12px;font-size:.82rem;color:#888;text-align:center;background:#f9fafb;border-top:1px solid #e5e7eb}
 
 .task-sec{background:#fff;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.08);margin-bottom:18px;overflow:hidden}
@@ -442,6 +447,41 @@ main{max-width:none;margin:0;padding:8px 12px}
             y: Math.max(0, Math.min(1, (sy - imgCy) / (vs.baseH * vs.zoom)))
         };
     }
+
+    /* ===== Visual grounding box ===== */
+    var groundingBoxEl = document.getElementById('grounding-box');
+    var groundingLabelEl = document.getElementById('grounding-label');
+    var _activeGroundingBox = null;
+
+    function showGroundingBox(normBox, labelText) {
+        _activeGroundingBox = normBox;
+        groundingLabelEl.textContent = labelText || '';
+        positionGroundingBox();
+        groundingBoxEl.style.display = 'block';
+    }
+
+    function hideGroundingBox() {
+        _activeGroundingBox = null;
+        groundingBoxEl.style.display = 'none';
+    }
+
+    function positionGroundingBox() {
+        if (!_activeGroundingBox) return;
+        var b = _activeGroundingBox;
+        var cw = containerEl.clientWidth, ch = containerEl.clientHeight;
+        var ox = (cw - vs.baseW * vs.zoom) / 2 + vs.panX;
+        var oy = (ch - vs.baseH * vs.zoom) / 2 + vs.panY;
+        groundingBoxEl.style.left = (ox + b.x * vs.baseW * vs.zoom) + 'px';
+        groundingBoxEl.style.top = (oy + b.y * vs.baseH * vs.zoom) + 'px';
+        groundingBoxEl.style.width = (b.w * vs.baseW * vs.zoom) + 'px';
+        groundingBoxEl.style.height = (b.h * vs.baseH * vs.zoom) + 'px';
+    }
+
+    var _origUpdateTransform = updateTransform;
+    updateTransform = function () {
+        _origUpdateTransform();
+        positionGroundingBox();
+    };
 
     /* ===== Status flash ===== */
     var saveTimer;

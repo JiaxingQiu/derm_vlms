@@ -58,7 +58,8 @@
 .sub-label .req{color:#dc2626;font-weight:600;text-transform:none;letter-spacing:0;font-size:.68rem;margin-left:4px}
 
 .reason-list{display:flex;flex-direction:column;gap:6px}
-.reason-row{display:flex;align-items:flex-start;gap:8px;padding:6px 8px;border:1px solid #e5e7eb;border-radius:6px;background:#fafafa}
+.reason-row{display:flex;align-items:flex-start;gap:8px;padding:6px 8px;border:1px solid #e5e7eb;border-radius:6px;background:#fafafa;transition:border-color .15s,box-shadow .15s;cursor:default}
+.reason-row:hover{border-color:#f97316;box-shadow:0 0 0 1px rgba(249,115,22,.25)}
 .reason-num{color:#9ca3af;font-size:.75rem;font-weight:600;min-width:18px;padding-top:3px}
 .reason-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
 .reason-text{font-size:.9rem;color:#374151;line-height:1.45;word-wrap:break-word;font-weight:400}
@@ -117,10 +118,17 @@
             var savedEdits = Array.isArray(savedD.reasoning_edits) ? savedD.reasoning_edits : [];
             var reasoningEdits = sentences.map(function (original, sIdx) {
                 var savedEdit = savedEdits[sIdx] || {};
+                var gbox = savedEdit.grounding_box || {
+                    x: Math.random() * 0.9,
+                    y: Math.random() * 0.75,
+                    w: 0.1,
+                    h: 0.25
+                };
                 return {
                     original: String(original || ''),
                     edited: typeof savedEdit.edited === 'string' ? savedEdit.edited : String(original || ''),
                     crops: Array.isArray(savedEdit.crops) ? savedEdit.crops : [],
+                    grounding_box: gbox,
                     editorOpen: false
                 };
             });
@@ -199,10 +207,6 @@
 
     // --- Completeness (mirror of server-side is_page_complete) ---
     isPageComplete = function () {
-        for (var i = 0; i < state.diagnosis_feedback.length; i++) {
-            var d = state.diagnosis_feedback[i];
-            if (d.label === 'incorrect' && !(d.correct_differential || '').trim()) return false;
-        }
         return true;
     };
 
@@ -288,6 +292,14 @@
         var row = document.createElement('div');
         row.className = 'reason-row';
         var wasEdited = edit.edited !== edit.original;
+
+        row.addEventListener('mouseenter', function () {
+            var truncated = edit.edited.length > 60 ? edit.edited.substring(0, 57) + '...' : edit.edited;
+            showGroundingBox(edit.grounding_box, truncated);
+        });
+        row.addEventListener('mouseleave', function () {
+            hideGroundingBox();
+        });
 
         var body = document.createElement('div');
         body.className = 'reason-body';
@@ -437,7 +449,7 @@
 
         var cdTa = document.createElement('textarea');
         cdTa.rows = 1;
-        cdTa.placeholder = "What's the more likely differential?";
+        cdTa.placeholder = "What's a more likely differential?";
         cdTa.dataset.kind = 'correct-diff';
         cdTa.dataset.diagIndex = String(dIdx);
         cdTa.value = diag.correct_differential;

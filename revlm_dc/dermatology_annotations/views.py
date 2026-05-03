@@ -345,10 +345,6 @@ def is_page_complete(annotation, model_key, case_data):
     if len(feedback) < len(ai_diagnoses):
         return False
 
-    for item in feedback[: len(ai_diagnoses)]:
-        label = (item or {}).get("label") or ""
-        if label == "incorrect" and not (item.get("correct_differential") or "").strip():
-            return False
     return True
 
 

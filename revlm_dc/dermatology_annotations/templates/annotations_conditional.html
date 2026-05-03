@@ -64,6 +64,9 @@
 .reason-text ins{color:#047857;text-decoration:underline;background:#d1fae5;padding:0 1px;border-radius:2px;text-decoration-thickness:1.5px}
 .reason-textarea{width:100%;padding:4px 6px;border:none;font-size:.9rem;font-family:inherit;resize:vertical;min-height:44px;line-height:1.45;background:transparent;color:#1f2937}
 .reason-textarea:focus{outline:none;border:none;box-shadow:none}
+.reason-ta-wrap{position:relative}
+.reason-del{position:absolute;top:-8px;right:-8px;width:20px;height:20px;border-radius:50%;border:1.5px solid #fff;background:#ef4444;color:#fff;font-size:.75rem;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;z-index:2;box-shadow:0 1px 3px rgba(0,0,0,.15)}
+.reason-del:hover{background:#dc2626}
 .reason-actions{display:flex;gap:5px;flex-shrink:0;padding-top:2px}
 .reason-btn{padding:3px 10px;border-radius:5px;border:1px solid #d1d5db;background:#fff;cursor:pointer;font-size:.72rem;color:#4b5563;transition:all .15s;display:flex;align-items:center;gap:3px}
 .reason-btn:hover{background:#f3f4f6;border-color:#9ca3af}
@@ -375,6 +378,9 @@
         var ta;
 
         if (edit.editorOpen) {
+            var taWrap = document.createElement('div');
+            taWrap.className = 'reason-ta-wrap';
+
             ta = document.createElement('textarea');
             ta.className = 'reason-textarea';
             ta.dataset.kind = 'reason';
@@ -395,7 +401,24 @@
                 syncHiddenPayload();
                 render();
             });
-            body.appendChild(ta);
+            taWrap.appendChild(ta);
+
+            var delSent = document.createElement('div');
+            delSent.className = 'reason-del';
+            delSent.innerHTML = '&times;';
+            delSent.title = 'Delete this sentence';
+            delSent.addEventListener('mousedown', function (e) { e.preventDefault(); });
+            delSent.onclick = function () {
+                edit.edited = '';
+                edit.boxes[0] = null;
+                edit.editorOpen = false;
+                deactivateBoxEditor();
+                syncHiddenPayload();
+                render();
+            };
+            taWrap.appendChild(delSent);
+
+            body.appendChild(taWrap);
 
             setTimeout(function () {
                 if (document.body.contains(ta)) {

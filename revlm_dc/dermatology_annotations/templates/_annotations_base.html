@@ -56,21 +56,7 @@
                         <div class="crop-overlay" id="crop-overlay">
                             <div class="crop-sel" id="crop-sel"></div>
                         </div>
-                        <div class="grounding-box" id="grounding-box">
-                            <span class="grounding-label" id="grounding-label"></span>
-                            <div class="gb-handle gb-h-nw" data-dir="nw"></div>
-                            <div class="gb-handle gb-h-n"  data-dir="n"></div>
-                            <div class="gb-handle gb-h-ne" data-dir="ne"></div>
-                            <div class="gb-handle gb-h-e"  data-dir="e"></div>
-                            <div class="gb-handle gb-h-se" data-dir="se"></div>
-                            <div class="gb-handle gb-h-s"  data-dir="s"></div>
-                            <div class="gb-handle gb-h-sw" data-dir="sw"></div>
-                            <div class="gb-handle gb-h-w"  data-dir="w"></div>
-                        </div>
-                        <div class="gb-multi-pool" id="gb-multi-pool">
-                            <div class="gb-multi-boxes" id="gb-multi-boxes"></div>
-                            <div class="gb-multi-labels" id="gb-multi-labels"></div>
-                        </div>
+                        <div class="gb-pool" id="gb-pool"></div>
                     </div>
                     <div class="img-id" id="img-id">{{ case_id }}</div>
                 </div>
@@ -144,11 +130,16 @@ main{max-width:none;margin:0;padding:8px 12px}
 .img-container img{position:absolute;top:0;left:0;transform-origin:0 0;user-select:none;-webkit-user-drag:none}
 .crop-overlay{position:absolute;inset:0;display:none;z-index:10}
 .crop-sel{position:absolute;border:2px solid #2563eb;background:rgba(37,99,235,.12);pointer-events:none}
-.grounding-box{position:absolute;display:none;border:3px solid #f97316;background:transparent;pointer-events:none;z-index:11}
-.grounding-box.gb-editing{pointer-events:auto;cursor:move}
-.grounding-label{position:absolute;bottom:100%;left:0;background:#f97316;color:#fff;font-size:.72rem;font-weight:600;padding:2px 8px;border-radius:3px 3px 0 0;white-space:nowrap;max-width:320px;overflow:hidden;text-overflow:ellipsis;line-height:1.4;pointer-events:none}
+.gb-pool{position:absolute;inset:0;pointer-events:none;z-index:11}
+.gb-box{position:absolute;border:3px solid #f97316;background:transparent;pointer-events:none}
+.gb-box-label{position:absolute;bottom:100%;left:0;background:#f97316;color:#fff;font-size:.68rem;font-weight:600;padding:1px 6px;border-radius:3px 3px 0 0;white-space:nowrap;max-width:280px;overflow:hidden;text-overflow:ellipsis;line-height:1.4;pointer-events:none}
+.gb-pool.gb-editing .gb-box{pointer-events:auto;cursor:pointer}
+.gb-pool.gb-editing .gb-box-label{pointer-events:auto}
+.gb-box.gb-selected{border-color:#ea580c;cursor:move;box-shadow:0 0 0 1px rgba(234,88,12,.4)}
+.gb-box-del{position:absolute;top:-8px;right:-8px;width:18px;height:18px;border-radius:50%;border:1.5px solid #fff;background:#ef4444;color:#fff;font-size:.7rem;cursor:pointer;display:none;align-items:center;justify-content:center;line-height:1;pointer-events:auto;z-index:13}
+.gb-pool.gb-editing .gb-box-del{display:flex}
 .gb-handle{position:absolute;width:10px;height:10px;background:#f97316;border:1.5px solid #fff;border-radius:2px;display:none;pointer-events:auto;z-index:12}
-.gb-editing .gb-handle{display:block}
+.gb-selected .gb-handle{display:block}
 .gb-h-nw{top:-5px;left:-5px;cursor:nwse-resize}
 .gb-h-n{top:-5px;left:50%;margin-left:-5px;cursor:ns-resize}
 .gb-h-ne{top:-5px;right:-5px;cursor:nesw-resize}
@@ -157,11 +148,6 @@ main{max-width:none;margin:0;padding:8px 12px}
 .gb-h-s{bottom:-5px;left:50%;margin-left:-5px;cursor:ns-resize}
 .gb-h-sw{bottom:-5px;left:-5px;cursor:nesw-resize}
 .gb-h-w{top:50%;margin-top:-5px;left:-5px;cursor:ew-resize}
-.gb-multi-pool{position:absolute;inset:0;pointer-events:none;z-index:11}
-.gb-multi-boxes{position:absolute;inset:0;z-index:0}
-.gb-multi-labels{position:absolute;inset:0;z-index:1}
-.gb-multi-box{position:absolute;border:3px solid #f97316;background:transparent;pointer-events:none}
-.gb-multi-label{position:absolute;pointer-events:none;background:#f97316;color:#fff;font-size:.68rem;font-weight:600;padding:1px 6px;border-radius:3px 3px 0 0;white-space:nowrap;max-width:280px;overflow:hidden;text-overflow:ellipsis;line-height:1.4}
 .img-id{padding:6px 12px;font-size:.82rem;color:#888;text-align:center;background:#f9fafb;border-top:1px solid #e5e7eb}
 
 .task-sec{background:#fff;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.08);margin-bottom:18px;overflow:hidden}
@@ -180,8 +166,7 @@ main{max-width:none;margin:0;padding:8px 12px}
 .evidence-item .ev-label{font-size:.6rem;color:#6b7280;text-align:center;padding:1px 3px;background:#f1f5f9;border-radius:0 0 3px 3px}
 .evidence-item .ev-remove{position:absolute;top:-4px;right:-4px;width:14px;height:14px;border-radius:50%;border:none;background:rgba(239,68,68,.9);color:#fff;font-size:.6rem;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;opacity:0;transition:opacity .15s;z-index:12}
 .evidence-item:hover .ev-remove{opacity:1}
-.ev-float-preview{display:none;position:fixed;overflow:hidden;border-radius:6px;border:2px solid #2563eb;box-shadow:0 6px 24px rgba(0,0,0,.3);z-index:9999;background:#fff;pointer-events:none}
-.ev-float-preview img{position:absolute;top:0;left:0}
+.ev-float-preview{display:none}
 
 .nav{display:flex;justify-content:center;align-items:center;gap:14px;padding:10px 0}
 .nav-btn{padding:9px 26px;border-radius:8px;font-size:.93rem;cursor:pointer;font-weight:500;border:1px solid #d1d5db;background:#fff;color:#374151;transition:all .15s}
@@ -351,14 +336,8 @@ main{max-width:none;margin:0;padding:8px 12px}
                 var lbl = document.createElement('div');
                 lbl.className = 'ev-label';
                 lbl.textContent = 'Ev ' + (idx + 1);
-                var rm = document.createElement('button');
-                rm.type = 'button';
-                rm.className = 'ev-remove';
-                rm.innerHTML = '&times;';
-                rm.onclick = function () { removeFieldCrop(fieldEl, idx, container); };
                 div.appendChild(wrapper);
                 div.appendChild(lbl);
-                div.appendChild(rm);
                 container.appendChild(div);
             });
         };
@@ -412,11 +391,13 @@ main{max-width:none;margin:0;padding:8px 12px}
         if (!fieldEl) return;
         var crops = getFieldCrops(fieldEl).concat([crop]);
         setFieldCrops(fieldEl, crops);
-        var marker = '[ev ' + crops.length + '] ';
+        var marker = '[ev ' + crops.length + ']';
         var pos = fieldEl.selectionStart || fieldEl.value.length;
-        fieldEl.value = fieldEl.value.slice(0, pos) + marker + fieldEl.value.slice(pos);
+        var after = fieldEl.value.slice(pos);
+        var sep = (after && after.charAt(0) !== ' ') ? ' ' : '';
+        fieldEl.value = fieldEl.value.slice(0, pos) + marker + sep + after;
         fieldEl.focus();
-        fieldEl.selectionStart = fieldEl.selectionEnd = pos + marker.length;
+        fieldEl.selectionStart = fieldEl.selectionEnd = pos + marker.length + sep.length;
         var target = getFieldTarget(fieldEl);
         if (target) target.updateText(fieldEl.value);
         var evDiv = findEvidenceDiv(fieldEl);
@@ -476,78 +457,57 @@ main{max-width:none;margin:0;padding:8px 12px}
         };
     }
 
-    /* ===== Visual grounding box + interactive editor ===== */
-    var groundingBoxEl = document.getElementById('grounding-box');
-    var groundingLabelEl = document.getElementById('grounding-label');
-    var _activeGroundingBox = null;
+    /* ===== Unified box overlay system ===== */
+    var _gbPool = document.getElementById('gb-pool');
+    var _gbEntries = [];
+    var _gbEditing = false;
+    var _gbSelectedIdx = -1;
+    var _gbOnChange = null;
+    var _gbOnDelete = null;
 
-    // --- Editor state ---
-    var _gbEditor = {
-        active: false,
-        box: null,
-        modified: false,
-        onChange: null,
-        dragging: false,
-        dragStartX: 0, dragStartY: 0,
-        dragOrigX: 0, dragOrigY: 0,
-        resizing: false,
-        resizeDir: null,
-        resizeStartX: 0, resizeStartY: 0,
-        resizeOrigBox: null
-    };
-
+    var _gbDrag = { active: false, startX: 0, startY: 0, origX: 0, origY: 0 };
+    var _gbResize = { active: false, dir: null, startX: 0, startY: 0, origBox: null };
     var GB_MIN_DIM = 0.02;
 
-    // --- Passive hover show/hide (unchanged) ---
-    function showGroundingBox(normBox, labelText) {
-        if (_gbEditor.active) return;
-        _activeGroundingBox = normBox;
-        groundingLabelEl.textContent = labelText || '';
-        positionGroundingBox();
-        groundingBoxEl.style.display = 'block';
+    var HANDLE_DIRS = ['nw','n','ne','e','se','s','sw','w'];
+
+    function _createBoxEl(label, editable) {
+        var box = document.createElement('div');
+        box.className = 'gb-box';
+
+        var lbl = document.createElement('div');
+        lbl.className = 'gb-box-label';
+        lbl.textContent = label || '';
+        box.appendChild(lbl);
+
+        if (editable) {
+            var del = document.createElement('div');
+            del.className = 'gb-box-del';
+            del.innerHTML = '&times;';
+            box.appendChild(del);
+
+            HANDLE_DIRS.forEach(function (dir) {
+                var h = document.createElement('div');
+                h.className = 'gb-handle gb-h-' + dir;
+                h.dataset.dir = dir;
+                box.appendChild(h);
+            });
+        }
+        return box;
     }
 
-    function hideGroundingBox() {
-        if (_gbEditor.active) return;
-        _activeGroundingBox = null;
-        groundingBoxEl.style.display = 'none';
-    }
-
-    function positionGroundingBox() {
-        if (!_activeGroundingBox) return;
-        var b = _activeGroundingBox;
+    function _positionBoxEl(el, b) {
         var cw = containerEl.clientWidth, ch = containerEl.clientHeight;
         var ox = (cw - vs.baseW * vs.zoom) / 2 + vs.panX;
         var oy = (ch - vs.baseH * vs.zoom) / 2 + vs.panY;
-        groundingBoxEl.style.left = (ox + b.x * vs.baseW * vs.zoom) + 'px';
-        groundingBoxEl.style.top = (oy + b.y * vs.baseH * vs.zoom) + 'px';
-        groundingBoxEl.style.width = (b.w * vs.baseW * vs.zoom) + 'px';
-        groundingBoxEl.style.height = (b.h * vs.baseH * vs.zoom) + 'px';
+        el.style.left = (ox + b.x * vs.baseW * vs.zoom) + 'px';
+        el.style.top = (oy + b.y * vs.baseH * vs.zoom) + 'px';
+        el.style.width = (b.w * vs.baseW * vs.zoom) + 'px';
+        el.style.height = (b.h * vs.baseH * vs.zoom) + 'px';
     }
 
-    // --- Activate interactive editor ---
-    function activateGroundingEditor(normBox, labelText, onChange) {
-        _gbEditor.active = true;
-        _gbEditor.box = normBox;
-        _gbEditor.modified = false;
-        _gbEditor.onChange = onChange || null;
-        _activeGroundingBox = normBox;
-        groundingLabelEl.textContent = labelText || '';
-        groundingBoxEl.classList.add('gb-editing');
-        positionGroundingBox();
-        groundingBoxEl.style.display = 'block';
-    }
-
-    function deactivateGroundingEditor() {
-        var result = { box: _gbEditor.box, modified: _gbEditor.modified };
-        _gbEditor.active = false;
-        _gbEditor.dragging = false;
-        _gbEditor.resizing = false;
-        _gbEditor.onChange = null;
-        groundingBoxEl.classList.remove('gb-editing');
-        groundingBoxEl.style.display = 'none';
-        _activeGroundingBox = null;
-        return result;
+    function _repositionAll() {
+        _gbEntries.forEach(function (e) { _positionBoxEl(e.el, e.box); });
     }
 
     function _pxToNormDelta(dxPx, dyPx) {
@@ -557,145 +517,143 @@ main{max-width:none;margin:0;padding:8px 12px}
         };
     }
 
-    // --- Drag: mousedown on box body ---
-    groundingBoxEl.addEventListener('mousedown', function (e) {
-        if (!_gbEditor.active) return;
-        if (e.target.classList.contains('gb-handle')) return;
-        if (e.button !== 0) return;
-        e.preventDefault();
-        e.stopPropagation();
-        _gbEditor.dragging = true;
-        _gbEditor.dragStartX = e.clientX;
-        _gbEditor.dragStartY = e.clientY;
-        _gbEditor.dragOrigX = _gbEditor.box.x;
-        _gbEditor.dragOrigY = _gbEditor.box.y;
-    });
+    function _selectBox(idx) {
+        _gbEntries.forEach(function (e, i) {
+            e.el.classList.toggle('gb-selected', i === idx);
+        });
+        _gbSelectedIdx = idx;
+    }
 
-    // --- Resize: mousedown on handle ---
-    groundingBoxEl.addEventListener('mousedown', function (e) {
-        if (!_gbEditor.active) return;
+    /* --- Passive hover: show boxes, no interaction --- */
+    function showGroundingBoxes(items) {
+        if (_gbEditing) return;
+        hideGroundingBoxes();
+        items.forEach(function (item) {
+            var el = _createBoxEl(item.label, false);
+            _gbPool.appendChild(el);
+            _gbEntries.push({ el: el, box: item.box });
+        });
+        _repositionAll();
+    }
+
+    function hideGroundingBoxes() {
+        if (_gbEditing) return;
+        _gbEntries.forEach(function (e) { e.el.remove(); });
+        _gbEntries = [];
+    }
+
+    /* --- Interactive edit mode --- */
+    function activateBoxEditor(boxes, labels, onChange, onDelete) {
+        hideGroundingBoxes();
+        _gbEditing = true;
+        _gbOnChange = onChange || null;
+        _gbOnDelete = onDelete || null;
+        _gbPool.classList.add('gb-editing');
+
+        boxes.forEach(function (box, idx) {
+            var el = _createBoxEl(labels[idx] || '', true);
+            _gbPool.appendChild(el);
+            _gbEntries.push({ el: el, box: box, idx: idx });
+        });
+        _repositionAll();
+        _selectBox(0);
+    }
+
+    function deactivateBoxEditor() {
+        _gbEditing = false;
+        _gbSelectedIdx = -1;
+        _gbOnChange = null;
+        _gbOnDelete = null;
+        _gbPool.classList.remove('gb-editing');
+        _gbEntries.forEach(function (e) { e.el.remove(); });
+        _gbEntries = [];
+    }
+
+    function refreshBoxEditorLabels(labels) {
+        _gbEntries.forEach(function (e, i) {
+            var lbl = e.el.querySelector('.gb-box-label');
+            if (lbl) lbl.textContent = labels[i] || '';
+        });
+    }
+
+    /* --- Click on box: select / delete --- */
+    _gbPool.addEventListener('mousedown', function (e) {
+        if (!_gbEditing) return;
+
+        var delBtn = e.target.closest('.gb-box-del');
+        if (delBtn) {
+            e.preventDefault(); e.stopPropagation();
+            var boxEl = delBtn.closest('.gb-box');
+            var entryIdx = _gbEntries.findIndex(function (en) { return en.el === boxEl; });
+            if (entryIdx >= 0 && _gbOnDelete) _gbOnDelete(entryIdx);
+            return;
+        }
+
         var handle = e.target.closest('.gb-handle');
-        if (!handle) return;
-        if (e.button !== 0) return;
-        e.preventDefault();
-        e.stopPropagation();
-        _gbEditor.resizing = true;
-        _gbEditor.resizeDir = handle.dataset.dir;
-        _gbEditor.resizeStartX = e.clientX;
-        _gbEditor.resizeStartY = e.clientY;
-        _gbEditor.resizeOrigBox = {
-            x: _gbEditor.box.x, y: _gbEditor.box.y,
-            w: _gbEditor.box.w, h: _gbEditor.box.h
-        };
+        if (handle) {
+            var boxEl = handle.closest('.gb-box');
+            var entryIdx = _gbEntries.findIndex(function (en) { return en.el === boxEl; });
+            if (entryIdx < 0 || entryIdx !== _gbSelectedIdx) return;
+            e.preventDefault(); e.stopPropagation();
+            var b = _gbEntries[entryIdx].box;
+            _gbResize = {
+                active: true, dir: handle.dataset.dir,
+                startX: e.clientX, startY: e.clientY,
+                origBox: { x: b.x, y: b.y, w: b.w, h: b.h }
+            };
+            return;
+        }
+
+        var boxEl = e.target.closest('.gb-box');
+        if (boxEl) {
+            e.preventDefault(); e.stopPropagation();
+            var entryIdx = _gbEntries.findIndex(function (en) { return en.el === boxEl; });
+            if (entryIdx < 0) return;
+            _selectBox(entryIdx);
+            var b = _gbEntries[entryIdx].box;
+            _gbDrag = { active: true, startX: e.clientX, startY: e.clientY, origX: b.x, origY: b.y };
+        }
     }, true);
 
-    // --- Mousemove (drag + resize) ---
     window.addEventListener('mousemove', function (e) {
-        if (_gbEditor.dragging) {
-            var d = _pxToNormDelta(e.clientX - _gbEditor.dragStartX, e.clientY - _gbEditor.dragStartY);
-            var b = _gbEditor.box;
-            b.x = Math.max(0, Math.min(1 - b.w, _gbEditor.dragOrigX + d.dx));
-            b.y = Math.max(0, Math.min(1 - b.h, _gbEditor.dragOrigY + d.dy));
-            positionGroundingBox();
+        if (_gbDrag.active && _gbSelectedIdx >= 0) {
+            var d = _pxToNormDelta(e.clientX - _gbDrag.startX, e.clientY - _gbDrag.startY);
+            var b = _gbEntries[_gbSelectedIdx].box;
+            b.x = Math.max(0, Math.min(1 - b.w, _gbDrag.origX + d.dx));
+            b.y = Math.max(0, Math.min(1 - b.h, _gbDrag.origY + d.dy));
+            _positionBoxEl(_gbEntries[_gbSelectedIdx].el, b);
         }
-        if (_gbEditor.resizing) {
-            var d = _pxToNormDelta(e.clientX - _gbEditor.resizeStartX, e.clientY - _gbEditor.resizeStartY);
-            var o = _gbEditor.resizeOrigBox;
-            var b = _gbEditor.box;
-            var dir = _gbEditor.resizeDir;
-
+        if (_gbResize.active && _gbSelectedIdx >= 0) {
+            var d = _pxToNormDelta(e.clientX - _gbResize.startX, e.clientY - _gbResize.startY);
+            var o = _gbResize.origBox;
+            var b = _gbEntries[_gbSelectedIdx].box;
+            var dir = _gbResize.dir;
             var nx = o.x, ny = o.y, nw = o.w, nh = o.h;
-
-            if (dir.indexOf('e') !== -1) {
-                nw = Math.max(GB_MIN_DIM, Math.min(1 - nx, o.w + d.dx));
-            }
-            if (dir.indexOf('w') !== -1) {
-                var newX = Math.max(0, Math.min(o.x + o.w - GB_MIN_DIM, o.x + d.dx));
-                nw = o.w + (o.x - newX);
-                nx = newX;
-            }
-            if (dir.indexOf('s') !== -1) {
-                nh = Math.max(GB_MIN_DIM, Math.min(1 - ny, o.h + d.dy));
-            }
-            if (dir.indexOf('n') !== -1) {
-                var newY = Math.max(0, Math.min(o.y + o.h - GB_MIN_DIM, o.y + d.dy));
-                nh = o.h + (o.y - newY);
-                ny = newY;
-            }
-
+            if (dir.indexOf('e') !== -1) nw = Math.max(GB_MIN_DIM, Math.min(1 - nx, o.w + d.dx));
+            if (dir.indexOf('w') !== -1) { var newX = Math.max(0, Math.min(o.x + o.w - GB_MIN_DIM, o.x + d.dx)); nw = o.w + (o.x - newX); nx = newX; }
+            if (dir.indexOf('s') !== -1) nh = Math.max(GB_MIN_DIM, Math.min(1 - ny, o.h + d.dy));
+            if (dir.indexOf('n') !== -1) { var newY = Math.max(0, Math.min(o.y + o.h - GB_MIN_DIM, o.y + d.dy)); nh = o.h + (o.y - newY); ny = newY; }
             b.x = nx; b.y = ny; b.w = nw; b.h = nh;
-            positionGroundingBox();
+            _positionBoxEl(_gbEntries[_gbSelectedIdx].el, b);
         }
     });
 
-    // --- Mouseup (end drag / resize) ---
     window.addEventListener('mouseup', function () {
-        if (_gbEditor.dragging) {
-            _gbEditor.dragging = false;
-            _gbEditor.modified = true;
-            if (_gbEditor.onChange) _gbEditor.onChange(_gbEditor.box);
+        if (_gbDrag.active) {
+            _gbDrag.active = false;
+            if (_gbOnChange && _gbSelectedIdx >= 0) _gbOnChange(_gbSelectedIdx, _gbEntries[_gbSelectedIdx].box);
         }
-        if (_gbEditor.resizing) {
-            _gbEditor.resizing = false;
-            _gbEditor.modified = true;
-            if (_gbEditor.onChange) _gbEditor.onChange(_gbEditor.box);
+        if (_gbResize.active) {
+            _gbResize.active = false;
+            if (_gbOnChange && _gbSelectedIdx >= 0) _gbOnChange(_gbSelectedIdx, _gbEntries[_gbSelectedIdx].box);
         }
     });
 
     var _origUpdateTransform = updateTransform;
     updateTransform = function () {
         _origUpdateTransform();
-        positionGroundingBox();
-        _repositionMultiBoxes();
+        _repositionAll();
     };
-
-    /* ===== Multi-box grounding (diagnosis-level hover) ===== */
-    var _gbMultiBoxes = document.getElementById('gb-multi-boxes');
-    var _gbMultiLabels = document.getElementById('gb-multi-labels');
-    var _multiEntries = [];
-
-    function showGroundingBoxes(items) {
-        if (_gbEditor.active) return;
-        hideGroundingBoxes();
-        items.forEach(function (item) {
-            var boxEl = document.createElement('div');
-            boxEl.className = 'gb-multi-box';
-
-            var lblEl = document.createElement('div');
-            lblEl.className = 'gb-multi-label';
-            lblEl.textContent = item.label || '';
-
-            _gbMultiBoxes.appendChild(boxEl);
-            _gbMultiLabels.appendChild(lblEl);
-            _multiEntries.push({ boxEl: boxEl, lblEl: lblEl, normBox: item.box });
-        });
-        _repositionMultiBoxes();
-    }
-
-    function hideGroundingBoxes() {
-        _multiEntries.forEach(function (e) { e.boxEl.remove(); e.lblEl.remove(); });
-        _multiEntries = [];
-    }
-
-    function _repositionMultiBoxes() {
-        if (!_multiEntries.length) return;
-        var cw = containerEl.clientWidth, ch = containerEl.clientHeight;
-        var ox = (cw - vs.baseW * vs.zoom) / 2 + vs.panX;
-        var oy = (ch - vs.baseH * vs.zoom) / 2 + vs.panY;
-        _multiEntries.forEach(function (e) {
-            var b = e.normBox;
-            var l = ox + b.x * vs.baseW * vs.zoom;
-            var t = oy + b.y * vs.baseH * vs.zoom;
-            var w = b.w * vs.baseW * vs.zoom;
-            var h = b.h * vs.baseH * vs.zoom;
-            e.boxEl.style.left = l + 'px';
-            e.boxEl.style.top = t + 'px';
-            e.boxEl.style.width = w + 'px';
-            e.boxEl.style.height = h + 'px';
-            e.lblEl.style.left = l + 'px';
-            e.lblEl.style.top = (t - e.lblEl.offsetHeight) + 'px';
-        });
-    }
 
     /* ===== Status flash ===== */
     var saveTimer;
@@ -739,7 +697,7 @@ main{max-width:none;margin:0;padding:8px 12px}
 
     containerEl.addEventListener('mousedown', function (e) {
         if (vs.cropMode || e.button !== 0) return;
-        if (_gbEditor.active && e.target.closest('#grounding-box')) return;
+        if (_gbEditing && e.target.closest('#gb-pool')) return;
         vs.isPanning = true;
         vs.panStartX = e.clientX; vs.panStartY = e.clientY;
         vs.panOrigX = vs.panX; vs.panOrigY = vs.panY;
@@ -822,36 +780,10 @@ main{max-width:none;margin:0;padding:8px 12px}
         }
     });
 
-    /* ===== Floating evidence preview ===== */
+    /* ===== Floating evidence preview (disabled) ===== */
     var floatPrev = document.createElement('div');
     floatPrev.className = 'ev-float-preview';
     document.body.appendChild(floatPrev);
-
-    document.addEventListener('mouseenter', function (e) {
-        var item = e.target.closest('.evidence-item');
-        if (!item || !item.dataset.prevCrop) return;
-        var c = JSON.parse(item.dataset.prevCrop);
-        var nw = +item.dataset.prevNw, nh = +item.dataset.prevNh;
-        var psc = Math.min(240 / (c.w * nw), 240 / (c.h * nh), 1);
-        var pW = Math.max(1, c.w * nw * psc), pH = Math.max(1, c.h * nh * psc);
-        floatPrev.style.width = pW + 'px'; floatPrev.style.height = pH + 'px';
-        floatPrev.innerHTML = '';
-        var img = document.createElement('img');
-        img.src = item.dataset.prevSrc;
-        img.style.width = (nw * psc) + 'px'; img.style.height = (nh * psc) + 'px';
-        img.style.left = (-c.x * nw * psc) + 'px'; img.style.top = (-c.y * nh * psc) + 'px';
-        floatPrev.appendChild(img);
-        var rect = item.getBoundingClientRect();
-        var top = rect.top - pH - 8;
-        if (top < 4) top = rect.bottom + 8;
-        var left = Math.max(4, Math.min(rect.left + rect.width / 2 - pW / 2, window.innerWidth - pW - 4));
-        floatPrev.style.top = top + 'px'; floatPrev.style.left = left + 'px';
-        floatPrev.style.display = 'block';
-    }, true);
-
-    document.addEventListener('mouseleave', function (e) {
-        if (e.target.closest('.evidence-item')) floatPrev.style.display = 'none';
-    }, true);
 
     /* ===== Navigation ===== */
     document.querySelectorAll('.nav-btn').forEach(function (btn) {

@@ -169,11 +169,19 @@ def normalize_reasoning_edits(edits, ai_sentences):
         edited = entry.get("edited")
         if edited is None:
             edited = entry.get("text", original)
-        out.append({
+        result = {
             "original": str(original),
             "edited": str(edited if edited else original),
             "crops": entry.get("crops") if isinstance(entry.get("crops"), list) else [],
-        })
+        }
+        gbox = entry.get("grounding_box")
+        if gbox is not None and isinstance(gbox, dict):
+            result["grounding_box"] = gbox
+        elif "grounding_box" in entry:
+            result["grounding_box"] = None
+        if entry.get("_ev0_moved"):
+            result["_ev0_moved"] = True
+        out.append(result)
     return out
 
 
@@ -626,11 +634,16 @@ def annotations_view(request):
         "other_feedback_crops": of.get("crops", []),
     }
 
+    all_model_keys = get_model_keys(current_case_data)
+    model_num = all_model_keys.index(current_model_key) + 1 if current_model_key in all_model_keys else 1
+    model_display_name = "AI Model " + str(model_num)
+
     context = {
         "login_id": login_id,
         "case_id": current_case_id,
         "case_data": current_case_data,
         "model_key": current_model_key,
+        "model_display_name": model_display_name,
         "model_data": current_model_data,
         "annotation": annotation,
         "saved_model_review": saved_model_review,

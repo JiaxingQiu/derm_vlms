@@ -10,7 +10,7 @@
 {% block right_panel %}
 <div class="task-sec">
     <div class="vlm-badge" id="vlm-badge">
-        <span class="vlm-tag">Model</span> {{ model_key }}
+        <span class="vlm-tag">Model</span> {{ model_display_name }}
     </div>
     <div class="tc">
         <div class="crop-hint">Use Crop &#x2702; to select a region as evidence for any part of your feedback</div>
@@ -38,15 +38,15 @@
 .diag-row{display:flex;align-items:stretch;gap:0}
 .diag-rank{min-width:28px;display:flex;align-items:flex-start;justify-content:center;font-weight:700;color:#475569;font-size:.9rem;padding-top:10px}
 .diag-card{flex:1;border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc;overflow:hidden;transition:background .15s}
-.diag-card.diag-expanded{background:#fff7ed;border-color:#fb923c}
-.diag-card.lbl-incorrect{border-color:#fb923c}
+.diag-card.diag-expanded{background:#fff7ed;border-color:#fb923c;border-style:dashed}
+.diag-card.lbl-incorrect{border-color:#e2e8f0}
 .diag-head{display:flex;align-items:center;gap:8px;padding:8px 12px;cursor:pointer;user-select:none}
 .diag-head:hover{background:rgba(0,0,0,.03)}
+.diag-revert{padding:3px 10px;border-radius:5px;border:1px solid #fcd34d;background:#fffbeb;color:#b45309;font-size:.72rem;cursor:pointer;white-space:nowrap;transition:all .15s;flex-shrink:0}
+.diag-revert:hover{background:#fef3c7;border-color:#f59e0b}
 .drag-handle{cursor:grab;color:#9ca3af;font-size:1.1rem;padding:0 4px;user-select:none;line-height:1}
 .drag-handle:active{cursor:grabbing}
 .diag-name{flex:1;font-size:.9rem;font-weight:700;color:#1f2937;line-height:1.4}
-.diag-chevron{color:#9ca3af;font-size:.8rem;transition:transform .15s;flex-shrink:0}
-.diag-expanded .diag-chevron{transform:rotate(90deg)}
 
 .diag-expand{padding:0 12px 12px 12px;border-top:1px dashed #fb923c;background:#fff;display:none}
 .diag-card.diag-expanded .diag-expand{display:block}
@@ -55,7 +55,7 @@
 
 .reason-list{display:flex;flex-direction:column;gap:6px}
 .reason-row{display:flex;align-items:flex-start;gap:8px;padding:6px 8px;border:1px solid #e5e7eb;border-radius:6px;background:#fafafa;transition:border-color .15s,box-shadow .15s;cursor:default}
-.reason-row:hover{border-color:#f97316;box-shadow:0 0 0 1px rgba(249,115,22,.25)}
+.reason-row:hover{background:#fff7ed}
 .reason-row.reason-editing{border-color:#f97316;box-shadow:0 0 0 1px rgba(249,115,22,.25);background:#fff}
 .reason-num{color:#9ca3af;font-size:.75rem;font-weight:600;min-width:18px;padding-top:3px}
 .reason-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
@@ -87,6 +87,9 @@
     var savedReview = JSON.parse(document.getElementById('saved-review-data').textContent || '{}');
     var modelKey = '{{ model_key }}';
 
+    var _skipNextBlur = false;
+    var _editorJustClosed = false;
+
     // While a reasoning textarea is focused, clicks inside the image/zoom/
     // evidence panel should NOT steal focus from it. Otherwise the textarea
     // blur handler fires and closes the editor mid-crop. We preventDefault
@@ -115,19 +118,26 @@
             var savedEdits = Array.isArray(savedD.reasoning_edits) ? savedD.reasoning_edits : [];
             var reasoningEdits = sentences.map(function (original, sIdx) {
                 var savedEdit = savedEdits[sIdx] || {};
-                var gbox = savedEdit.grounding_box || {
-                    x: Math.random() * 0.9,
-                    y: Math.random() * 0.75,
-                    w: 0.1,
-                    h: 0.25
-                };
+                var savedCrops = Array.isArray(savedEdit.crops) ? savedEdit.crops : [];
+                var gbox;
+                if ('grounding_box' in savedEdit) {
+                    gbox = savedEdit.grounding_box;
+                } else {
+                    gbox = {
+                        x: Math.random() * 0.9,
+                        y: Math.random() * 0.75,
+                        w: 0.1,
+                        h: 0.25
+                    };
+                }
+                var boxes = [gbox].concat(savedCrops);
+                var origBox = gbox ? { x: gbox.x, y: gbox.y, w: gbox.w, h: gbox.h } : null;
                 return {
                     original: String(original || ''),
                     edited: typeof savedEdit.edited === 'string' ? savedEdit.edited : String(original || ''),
-                    crops: Array.isArray(savedEdit.crops) ? savedEdit.crops : [],
-                    grounding_box: gbox,
-                    _hasGroundingCrop: false,
-                    _groundingCropIdx: -1,
+                    boxes: boxes,
+                    _origBox: origBox,
+                    _ev0Moved: !!savedEdit._ev0_moved,
                     editorOpen: false
                 };
             });
@@ -174,8 +184,8 @@
             if (!Number.isInteger(sIdx) || !diag.reasoning_edits[sIdx]) return null;
             var edit = diag.reasoning_edits[sIdx];
             return {
-                getCrops: function () { return edit.crops; },
-                setCrops: function (c) { edit.crops = c; },
+                getCrops: function () { return edit.boxes.slice(1); },
+                setCrops: function (c) { edit.boxes = [edit.boxes[0]].concat(c); },
                 updateText: function (v) { edit.edited = v; }
             };
         }
@@ -188,18 +198,19 @@
         var payload = {
             model_name: modelKey,
             diagnosis_feedback: state.diagnosis_feedback.map(function (d) {
-                var hasEdits = (d.correct_differential || '').trim() !== '';
-                if (!hasEdits) {
-                    d.reasoning_edits.forEach(function (e) {
-                        if (e.edited !== e.original) hasEdits = true;
-                    });
-                }
-                d.label = hasEdits ? 'incorrect' : '';
+                var hasAltDiag = (d.correct_differential || '').trim() !== '';
+                d.label = hasAltDiag ? 'incorrect' : '';
                 return {
                     name: d.name,
                     label: d.label,
                     reasoning_edits: d.reasoning_edits.map(function (e) {
-                        return { original: e.original, edited: e.edited, crops: e.crops || [] };
+                        return {
+                            original: e.original,
+                            edited: e.edited,
+                            grounding_box: e.boxes[0] || null,
+                            crops: e.boxes.slice(1).filter(function (b) { return !!b; }),
+                            _ev0_moved: !!e._ev0Moved
+                        };
                     }),
                     correct_differential: d.correct_differential,
                     correct_differential_crops: d.correct_differential_crops || []
@@ -294,25 +305,74 @@
         });
     }
 
+    // --- Helper: build labels array for edit.boxes ---
+    function _boxLabels(edit) {
+        var clean = edit.edited.replace(/\[ev\s+\d+\]\s?/g, '');
+        var truncated = clean.length > 50 ? clean.substring(0, 47) + '...' : clean;
+        var labels = [edit.boxes[0] ? truncated : ''];
+        for (var i = 1; i < edit.boxes.length; i++) labels.push('ev ' + i);
+        return labels;
+    }
+
+    function _isDiagChanged(diag) {
+        if ((diag.correct_differential || '').trim() !== '') return true;
+        if ((diag.correct_differential_crops || []).length) return true;
+        for (var i = 0; i < diag.reasoning_edits.length; i++) {
+            var e = diag.reasoning_edits[i];
+            if (e.edited !== e.original) return true;
+            if (e.boxes[0] === null || e.boxes.length > 1) return true;
+            if (e.boxes[0] && e._origBox) {
+                var b = e.boxes[0], o = e._origBox;
+                if (b.x !== o.x || b.y !== o.y || b.w !== o.w || b.h !== o.h) return true;
+            }
+        }
+        return false;
+    }
+
+    function _revertDiag(diag) {
+        diag.correct_differential = '';
+        diag.correct_differential_crops = [];
+        diag.reasoning_edits.forEach(function (e) {
+            e.edited = e.original;
+            var newBox = {
+                x: Math.random() * 0.9,
+                y: Math.random() * 0.75,
+                w: 0.1, h: 0.25
+            };
+            e.boxes = [newBox];
+            e._origBox = { x: newBox.x, y: newBox.y, w: newBox.w, h: newBox.h };
+            e._ev0Moved = false;
+            e.editorOpen = false;
+        });
+    }
+
     // --- Render ---
     function renderReasonRow(diag, dIdx, edit, sIdx) {
         var row = document.createElement('div');
         row.className = 'reason-row' + (edit.editorOpen ? ' reason-editing' : '');
         var wasEdited = edit.edited !== edit.original;
+        var boxesModified = edit._ev0Moved || edit.boxes[0] === null || edit.boxes.length > 1;
+        if (!boxesModified && edit.boxes[0] && edit._origBox) {
+            var b = edit.boxes[0], o = edit._origBox;
+            if (b.x !== o.x || b.y !== o.y || b.w !== o.w || b.h !== o.h) boxesModified = true;
+        }
+        var hasChanges = wasEdited || boxesModified;
 
         row.addEventListener('mouseenter', function () {
-            var clean = edit.edited.replace(/\[ev\s+\d+\]\s?/g, '');
-            var truncated = clean.length > 60 ? clean.substring(0, 57) + '...' : clean;
-            showGroundingBox(edit.grounding_box, truncated);
+            var items = [];
+            edit.boxes.forEach(function (box, i) {
+                if (box) items.push({ box: box, label: _boxLabels(edit)[i] });
+            });
+            if (items.length) showGroundingBoxes(items);
         });
         row.addEventListener('mouseleave', function () {
-            hideGroundingBox();
+            hideGroundingBoxes();
         });
 
         var body = document.createElement('div');
         body.className = 'reason-body';
 
-        var ta;                 // textarea element when in edit state
+        var ta;
 
         if (edit.editorOpen) {
             ta = document.createElement('textarea');
@@ -328,24 +388,10 @@
                 syncHiddenPayload();
             });
             ta.addEventListener('blur', function () {
-                var result = deactivateGroundingEditor();
-                if (result.modified) {
-                    var box = { x: result.box.x, y: result.box.y, w: result.box.w, h: result.box.h };
-                    if (!edit._hasGroundingCrop) {
-                        edit.crops.push(box);
-                        edit._groundingCropIdx = edit.crops.length - 1;
-                        edit._hasGroundingCrop = true;
-                        var evNum = edit.crops.length;
-                        var marker = '[ev ' + evNum + '] ';
-                        if (ta.value.indexOf(marker.trim()) === -1) {
-                            ta.value = marker + ta.value;
-                            edit.edited = ta.value;
-                        }
-                    } else {
-                        edit.crops[edit._groundingCropIdx] = box;
-                    }
-                }
+                if (_skipNextBlur) { _skipNextBlur = false; return; }
+                deactivateBoxEditor();
                 edit.editorOpen = false;
+                _editorJustClosed = true;
                 syncHiddenPayload();
                 render();
             });
@@ -356,18 +402,63 @@
                     ta.focus();
                     try { ta.setSelectionRange(ta.value.length, ta.value.length); } catch (_) {}
                 }
-                var clean = edit.edited.replace(/\[ev\s+\d+\]\s?/g, '');
-                var truncated = clean.length > 60 ? clean.substring(0, 57) + '...' : clean;
-                activateGroundingEditor(edit.grounding_box, truncated, function (updatedBox) {
-                    edit.grounding_box = updatedBox;
-                    syncHiddenPayload();
+                var editorBoxes = [];
+                var editorLabels = [];
+                var editorIdxMap = [];
+                var allLabels = _boxLabels(edit);
+                edit.boxes.forEach(function (box, i) {
+                    if (box) {
+                        editorBoxes.push(box);
+                        editorLabels.push(allLabels[i]);
+                        editorIdxMap.push(i);
+                    }
                 });
-            }, 0);
+                activateBoxEditor(
+                    editorBoxes,
+                    editorLabels,
+                    function onBoxChange(visIdx, updatedBox) {
+                        var realIdx = editorIdxMap[visIdx];
+                        edit.boxes[realIdx] = updatedBox;
+                        if (realIdx === 0) edit._ev0Moved = true;
+                        syncHiddenPayload();
+                    },
+                    function onBoxDelete(visIdx) {
+                        var realIdx = editorIdxMap[visIdx];
+                        if (realIdx === 0) {
+                            edit.boxes[0] = null;
+                        } else {
+                            edit.boxes.splice(realIdx, 1);
+                            var oldN = realIdx;
+                            var text = ta.value;
+                            text = text.replace(new RegExp('\\[ev\\s+' + oldN + '\\]\\s?', 'g'), '');
+                            for (var n = oldN + 1; n <= edit.boxes.length; n++)
+                                text = text.replace(new RegExp('\\[ev\\s+' + n + '\\]', 'g'), '[ev ' + (n - 1) + ']');
+                            ta.value = text;
+                            edit.edited = text;
+                        }
+                        syncHiddenPayload();
+                        deactivateBoxEditor();
+                        edit.editorOpen = true;
+                        render();
+                    }
+                );
 
-            var evDiv = document.createElement('div');
-            evDiv.className = 'field-evidence';
-            body.appendChild(evDiv);
-            renderFieldEvidenceInto(evDiv, ta);
+                function _cursorSelectBox() {
+                    var pos = ta.selectionStart;
+                    var text = ta.value;
+                    var re = /\[ev\s+(\d+)\]/g, m;
+                    while ((m = re.exec(text)) !== null) {
+                        if (pos >= m.index && pos <= m.index + m[0].length) {
+                            var evN = parseInt(m[1], 10);
+                            var visIdx = editorIdxMap.indexOf(evN);
+                            if (visIdx >= 0) _selectBox(visIdx);
+                            return;
+                        }
+                    }
+                }
+                ta.addEventListener('click', _cursorSelectBox);
+                ta.addEventListener('keyup', _cursorSelectBox);
+            }, 0);
         } else {
             var textEl = document.createElement('div');
             textEl.className = 'reason-text';
@@ -388,26 +479,24 @@
         var actions = document.createElement('div');
         actions.className = 'reason-actions';
 
-        if (wasEdited) {
+        if (hasChanges) {
             var btnRevert = document.createElement('button');
             btnRevert.type = 'button';
             btnRevert.className = 'reason-btn revert';
             btnRevert.title = 'Revert to AI original';
             btnRevert.innerHTML = '&#x21BA;';
-            // Prevent the textarea from blurring (which would close the
-            // editor and detach this very button before click fires).
             btnRevert.addEventListener('mousedown', function (e) { e.preventDefault(); });
             btnRevert.onclick = function () {
+                deactivateBoxEditor();
                 edit.edited = edit.original;
-                edit.crops = [];
-                edit._hasGroundingCrop = false;
-                edit._groundingCropIdx = -1;
-                edit.grounding_box = {
+                var newBox = {
                     x: Math.random() * 0.9,
                     y: Math.random() * 0.75,
-                    w: 0.1,
-                    h: 0.25
+                    w: 0.1, h: 0.25
                 };
+                edit.boxes = [newBox];
+                edit._origBox = { x: newBox.x, y: newBox.y, w: newBox.w, h: newBox.h };
+                edit._ev0Moved = false;
                 edit.editorOpen = false;
                 syncHiddenPayload();
                 render();
@@ -422,10 +511,10 @@
 
     function renderDiagnosisCard(diag, dIdx) {
         var card = document.createElement('div');
-        card.className = 'diag-card' + (diag.expanded ? ' diag-expanded' : '') + (diag.label === 'incorrect' ? ' lbl-incorrect' : '');
+        card.className = 'diag-card' + (diag.expanded ? ' diag-expanded' : '');
         card.dataset.diagIndex = String(dIdx);
 
-        // --- Head row (drag handle + name + chevron) ---
+        // --- Head row (drag handle + name) ---
         var head = document.createElement('div');
         head.className = 'diag-head';
 
@@ -439,18 +528,34 @@
         nameEl.textContent = diag.name;
         head.appendChild(nameEl);
 
-        var chevron = document.createElement('span');
-        chevron.className = 'diag-chevron';
-        chevron.innerHTML = '&#x25B6;';
-        head.appendChild(chevron);
+        if (_isDiagChanged(diag)) {
+            var diagRevert = document.createElement('button');
+            diagRevert.type = 'button';
+            diagRevert.className = 'diag-revert';
+            diagRevert.innerHTML = '&#x21BA; All';
+            diagRevert.addEventListener('mousedown', function (e) { e.stopPropagation(); });
+            diagRevert.onclick = function (e) {
+                e.stopPropagation();
+                deactivateBoxEditor();
+                _revertDiag(diag);
+                syncHiddenPayload();
+                render();
+            };
+            head.appendChild(diagRevert);
+        }
 
         head.addEventListener('mouseenter', function () {
-            var items = diag.reasoning_edits.map(function (edit, sIdx) {
-                var clean = edit.edited.replace(/\[ev\s+\d+\]\s?/g, '');
-                var truncated = clean.length > 50 ? clean.substring(0, 47) + '...' : clean;
-                return { box: edit.grounding_box, label: (sIdx + 1) + '. ' + truncated };
+            var items = [];
+            diag.reasoning_edits.forEach(function (edit, sIdx) {
+                edit.boxes.forEach(function (box, bIdx) {
+                    if (!box) return;
+                    var lbl = bIdx === 0
+                        ? (sIdx + 1) + '. ' + (edit.edited.replace(/\[ev\s+\d+\]\s?/g, '').substring(0, 47) || '')
+                        : (sIdx + 1) + '-ev' + bIdx;
+                    items.push({ box: box, label: lbl });
+                });
             });
-            showGroundingBoxes(items);
+            if (items.length) showGroundingBoxes(items);
         });
         head.addEventListener('mouseleave', function () {
             hideGroundingBoxes();
@@ -473,7 +578,7 @@
 
         var cdTa = document.createElement('textarea');
         cdTa.rows = 1;
-        cdTa.placeholder = "What differential diagnosis is more likely?";
+        cdTa.placeholder = "What's a more likely diagnosis?";
         cdTa.dataset.kind = 'correct-diff';
         cdTa.dataset.diagIndex = String(dIdx);
         cdTa.value = diag.correct_differential;
@@ -481,6 +586,9 @@
             diag.correct_differential = cdTa.value;
             syncFieldCrops(cdTa);
             syncHiddenPayload();
+        });
+        cdTa.addEventListener('blur', function () {
+            _editorJustClosed = true;
         });
         cdWrap.appendChild(cdTa);
 
@@ -574,5 +682,26 @@
         syncFieldCrops(otherFeedbackEl);
         syncHiddenPayload();
         renderFieldEvidenceInto(document.getElementById('other-feedback-ev'), otherFeedbackEl);
+    });
+
+    var _origAddCropEvidence = addCropEvidence;
+    addCropEvidence = function (crop) {
+        _origAddCropEvidence(crop);
+        var ta = document.activeElement;
+        if (ta && ta.classList.contains('reason-textarea')) {
+            _skipNextBlur = true;
+            deactivateBoxEditor();
+            render();
+        }
+    };
+
+    document.addEventListener('click', function (e) {
+        if (_editorJustClosed) { _editorJustClosed = false; return; }
+        if (e.target.closest('.diag-card') || e.target.closest('.left-panel')) return;
+        var changed = false;
+        state.diagnosis_feedback.forEach(function (d) {
+            if (d.expanded) { d.expanded = false; changed = true; }
+        });
+        if (changed) render();
     });
 {% endblock %}

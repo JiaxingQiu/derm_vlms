@@ -487,22 +487,17 @@ def annotations_view(request):
     total_pages = len(pages)
 
     # ---- Determine current flat page index ----
-    is_nav_redirect = request.method == "GET" and request.GET.get("nav") == "1"
-
-    if request.method == "GET" and not is_nav_redirect:
-        flat_index = find_first_incomplete_page(pages, annotations_data, dermatologist)
+    current_case_idx = dermatologist.current_case_index
+    current_model_idx = dermatologist.current_model_index
+    if current_case_idx >= len(case_ids):
+        flat_index = total_pages
     else:
-        current_case_idx = dermatologist.current_case_index
-        current_model_idx = dermatologist.current_model_index
-        if current_case_idx >= len(case_ids):
-            flat_index = total_pages
-        else:
-            target_case_id = case_ids[current_case_idx]
-            flat_index = 0
-            for pi, (pid, _) in enumerate(pages):
-                if pid == target_case_id:
-                    flat_index = pi + current_model_idx
-                    break
+        target_case_id = case_ids[current_case_idx]
+        flat_index = 0
+        for pi, (pid, _) in enumerate(pages):
+            if pid == target_case_id:
+                flat_index = pi + current_model_idx
+                break
 
     # ---- Done-confirmation screen ----
     if flat_index >= total_pages:
@@ -579,6 +574,18 @@ def annotations_view(request):
             dermatologist.is_done = False
             dermatologist.save()
             return redirect(auth_url("annotations", raw_token))
+
+        # Guard: autosave may arrive after a navigation form-submit already
+        # advanced the dermatologist's position.  If the payload's page
+        # identifiers don't match the current page, reject the stale save.
+        page_cid = payload.pop("_page_case_id", None)
+        page_mk = payload.pop("_page_model_key", None)
+        if page_cid is not None and (
+            page_cid != current_case_id or page_mk != current_model_key
+        ):
+            if is_json_request(request):
+                return JsonResponse({"ok": False, "reason": "stale_page"})
+            return redirect(auth_url("annotations", raw_token, nav=1))
 
         update_annotation_conditional(
             annotation, payload, current_model_key, current_case_data,

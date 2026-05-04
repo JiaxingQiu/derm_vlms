@@ -195,6 +195,8 @@ main{max-width:none;margin:0;padding:8px 12px}
 
 <script>
 (function () {
+    var _pageCaseId = '{{ case_id }}';
+    var _pageModelKey = '';  // overridden by child template
     var imagePath = '/media/' + '{{ case_data.image_path }}';
 
     var imgEl = document.getElementById('img');
@@ -234,6 +236,8 @@ main{max-width:none;margin:0;padding:8px 12px}
         var parsed;
         try { parsed = JSON.parse(raw); } catch (e) { parsed = {}; }
         parsed.action = 'save';
+        parsed._page_case_id = _pageCaseId;
+        parsed._page_model_key = _pageModelKey;
         return JSON.stringify(parsed);
     }
 
@@ -248,6 +252,7 @@ main{max-width:none;margin:0;padding:8px 12px}
 
     function doAutosave() {
         _autosaveTimer = null;
+        if (!_autosaveArmed) return;
         if (_autosaveInflight) {
             scheduleAutosave();
             return;

@@ -89,6 +89,7 @@
     var modelData = JSON.parse(document.getElementById('model-data').textContent);
     var savedReview = JSON.parse(document.getElementById('saved-review-data').textContent || '{}');
     var modelKey = '{{ model_key }}';
+    _pageModelKey = modelKey;
 
     var _skipNextBlur = false;
     var _editorJustClosed = false;
@@ -323,7 +324,7 @@
         for (var i = 0; i < diag.reasoning_edits.length; i++) {
             var e = diag.reasoning_edits[i];
             if (e.edited !== e.original) return true;
-            if (e.boxes[0] === null || e.boxes.length > 1) return true;
+            if (e._ev0Moved || e.boxes[0] === null || e.boxes.length > 1) return true;
             if (e.boxes[0] && e._origBox) {
                 var b = e.boxes[0], o = e._origBox;
                 if (b.x !== o.x || b.y !== o.y || b.w !== o.w || b.h !== o.h) return true;

@@ -232,6 +232,50 @@ You need to run the following command
 git pull upstream main
 ```
 
+## Re-deploying a New Version of the Interface
+
+After pulling changes (e.g. switching branches or merging updates), run the following steps to apply them to the running production server:
+
+**1. Apply new DB migrations** (required if `models.py` changed)
+
+```bash
+cd /home/azureuser/derm_vlms/revlm_dc
+conda activate derm_django_env
+python manage.py migrate
+```
+
+**2. Re-parse data** (required if prediction CSVs or parsing logic changed)
+
+```bash
+python manage.py parsedata
+```
+
+**3. Collect static files** (required if templates, JS, or CSS changed)
+
+```bash
+python manage.py collectstatic --noinput
+```
+
+**4. Restart the app service**
+
+```bash
+sudo systemctl restart revlm_dc
+sudo systemctl status revlm_dc --no-pager
+```
+
+**5. Reload Nginx** (only if the Nginx config changed)
+
+```bash
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+To watch logs if something goes wrong:
+
+```bash
+sudo journalctl -u revlm_dc -f
+sudo tail -f /var/log/nginx/error.log
+```
+
 ## Pushing Changes from Server
 
 You need to run the following command

@@ -19,6 +19,9 @@ from urllib.parse import unquote, urlparse
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
+DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+
 def _load_env_file() -> None:
     env_file = os.getenv("DJANGO_ENV_FILE", str(BASE_DIR / ".env.production"))
     env_path = Path(env_file).expanduser()
@@ -281,3 +284,4 @@ LOGGING = {
         },
     },
 }
+

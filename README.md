@@ -23,13 +23,13 @@ As a suggestion, go through each tutorial to understand the basics of how to dep
 We use a container to easily manage our model annotation data described below
 
 
-| Folder                                | Model             | Base                                 | Params | Link                                                                                                    |
-| ------------------------------------- | ----------------- | ------------------------------------ | ------ | ------------------------------------------------------------------------------------------------------- |
-| `collect_ai_response/skingpt/`        | SkinGPT-4         | BLIP-2 + LLaMA-2-13B-Chat            | ~14B   | [JoshuaChou2018/SkinGPT-4](https://github.com/JoshuaChou2018/SkinGPT-4)                                 |
-| `collect_ai_response/dermato_llama/`  | DermatoLlama      | Llama-3.2-11B-Vision-Instruct + LoRA | ~11B   | [DermaVLM/DermatoLLama-full](https://huggingface.co/DermaVLM/DermatoLLama-full)                         |
-| `collect_ai_response/llava_derm/`     | LLaVA-Dermatology | LLaVA-1.5-7B                         | ~7B    | [Esperanto/llava-dermatology-7b-v1.5-hf](https://huggingface.co/Esperanto/llava-dermatology-7b-v1.5-hf) |
-| `collect_ai_response/medgemma/`       | MedGemma          | MedGemma-1.5-4B-IT                   | ~4B    | [google/medgemma-1.5-4b-it](https://huggingface.co/google/medgemma-1.5-4b-it)                           |
-| `collect_ai_response/gpt53/`          | GPT-5.3           | Azure OpenAI (proprietary)           | —      | Azure `gpt-5.3-chat` deployment                                                                         |
+| Folder                               | Model             | Base                                 | Params | Link                                                                                                    |
+| ------------------------------------ | ----------------- | ------------------------------------ | ------ | ------------------------------------------------------------------------------------------------------- |
+| `collect_ai_response/skingpt/`       | SkinGPT-4         | BLIP-2 + LLaMA-2-13B-Chat            | ~14B   | [JoshuaChou2018/SkinGPT-4](https://github.com/JoshuaChou2018/SkinGPT-4)                                 |
+| `collect_ai_response/dermato_llama/` | DermatoLlama      | Llama-3.2-11B-Vision-Instruct + LoRA | ~11B   | [DermaVLM/DermatoLLama-full](https://huggingface.co/DermaVLM/DermatoLLama-full)                         |
+| `collect_ai_response/llava_derm/`    | LLaVA-Dermatology | LLaVA-1.5-7B                         | ~7B    | [Esperanto/llava-dermatology-7b-v1.5-hf](https://huggingface.co/Esperanto/llava-dermatology-7b-v1.5-hf) |
+| `collect_ai_response/medgemma/`      | MedGemma          | MedGemma-1.5-4B-IT                   | ~4B    | [google/medgemma-1.5-4b-it](https://huggingface.co/google/medgemma-1.5-4b-it)                           |
+| `collect_ai_response/gpt53/`         | GPT-5.3           | Azure OpenAI (proprietary)           | —      | Azure `gpt-5.3-chat` deployment                                                                         |
 
 
 Each model folder contains its own:
@@ -202,7 +202,7 @@ python manage.py parsedata
 python manage.py runserver
 ```
 
-### Run admin 
+### Run admin
 
 We use an admin tab for supervising data collection in real time.
 
@@ -214,7 +214,7 @@ conda activate dermato_llama
 python manage.py createsuperuser
 ```
 
-Then create user name, email and password. http://localhost:8000/admin/
+Then create user name, email and password. [http://localhost:8000/admin/](http://localhost:8000/admin/)
 
 # PostgreSQL Server
 
@@ -222,66 +222,81 @@ Follow the instructions from this tutorial to deploy the server on [Azure](https
 
 # Production Deployment
 
-Follow `revlm_dc/DEPLOYMENT.md`.
-
-## Pulling Changes to Server
-
-You need to run the following command
-
-```bash
-git pull upstream main
-```
+Follow `revlm_dc/DEPLOYMENT.md` for first-time server setup (Nginx, Gunicorn, systemd, etc.).
 
 ## Re-deploying a New Version of the Interface
 
-After pulling changes (e.g. switching branches or merging updates), run the following steps to apply them to the running production server:
+**Prerequisites (on your dev machine, before pushing):**
 
-**1. Apply new DB migrations** (required if `models.py` changed)
+1. Make sure the interface runs locally with no errors
+2. Generate migration files if `models.py` changed:
 
 ```bash
-cd /home/azureuser/derm_vlms/revlm_dc
-conda activate derm_django_env
-python manage.py migrate
+cd revlm_dc
+conda activate ...
+python manage.py makemigrations dermatology_annotations
 ```
 
-**2. Re-parse data** (required if prediction CSVs or parsing logic changed)
+1. Commit everything including migration files and push:
+
+```bash
+cd ..
+git add .
+git commit -m "description of changes"
+git push origin <branch-name>
+```
+
+> **Important:** Never gitignore the `migrations/` folder. Migration files must be committed from dev so the server only applies them — never generates them.
+
+**On the Azure server:**
+
+**1. Pull the latest code**
+
+```bash
+cd /home/azureuser/derm_vlms
+git pull origin <branch-name>
+```
+
+**2. Apply DB migrations**
+
+```bash
+cd revlm_dc
+conda activate derm_django_env
+python manage.py showmigrations   # check for unapplied migrations (no [X])
+python manage.py migrate          # apply them to PostgreSQL
+```
+
+**3. Re-parse data** (if prediction CSVs or parsing logic changed)
 
 ```bash
 python manage.py parsedata
 ```
 
-**3. Collect static files** (required if templates, JS, or CSS changed)
+**4. Collect static files** (if templates, JS, or CSS changed)
 
 ```bash
 python manage.py collectstatic --noinput
 ```
 
-**4. Restart the app service**
+**5. Restart the app service**
 
 ```bash
 sudo systemctl restart revlm_dc
 sudo systemctl status revlm_dc --no-pager
 ```
 
-**5. Reload Nginx** (only if the Nginx config changed)
+**6. Reload Nginx** (only if the Nginx config changed)
 
 ```bash
 sudo nginx -t && sudo systemctl reload nginx
 ```
 
-To watch logs if something goes wrong:
+**7. Verify**
+
+Visit [http://20.246.91.185](http://20.246.91.185) and test the interface. If something goes wrong:
 
 ```bash
 sudo journalctl -u revlm_dc -f
 sudo tail -f /var/log/nginx/error.log
 ```
 
-## Pushing Changes from Server
-
-You need to run the following command
-
-```bash
-git add .
-git commit -m "name of commit"
-git push upstream main
-```

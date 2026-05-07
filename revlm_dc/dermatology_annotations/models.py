@@ -70,16 +70,17 @@ class Annotation(models.Model):
     raw_response = models.TextField(blank=True, default="")
     # Six fields, three pairs, one pair per AI differential (top-3).
     #
-    # diagnosis_N (dict): verdict + correct alternative
+    # diagnosis_N (dict): verdict + replacement info
     #   {
-    #     "name": str,                                  # AI diagnosis name (read-only)
+    #     "name": str,                                  # AI diagnosis name (always preserved)
     #     "label": "" | "correct" | "incorrect",
-    #     "correct_differential": str,                  # required when label == "incorrect"
-    #     "correct_differential_crops": [{x,y,w,h}, ...]
+    #     "correct_differential": str,                  # human replacement diagnosis name
     #   }
     #
     # reasoning_N (list): 1:1 with AI-extracted sentences for diagnosis N
     #   [{"original": str, "edited": str, "crops": [{x,y,w,h}, ...]}, ...]
+    #   When user replaces a diagnosis, a sentinel entry is prepended:
+    #   [{"original": "deleted", "edited": "<human reasoning>"}, ...AI sentences...]
     #
     # Crops always live next to the text whose [ev N] markers they back, so
     # they never need to be re-aligned across fields.

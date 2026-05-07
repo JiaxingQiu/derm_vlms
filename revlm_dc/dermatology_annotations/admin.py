@@ -210,12 +210,7 @@ class DermatologistAdmin(admin.ModelAdmin):
                         "edited": inline_crops(edited, (edit or {}).get("crops", [])),
                         "edits_made": (edited or "") != (original or ""),
                     })
-                correct_diff = ""
-                if label == "incorrect":
-                    correct_diff = inline_crops(
-                        d.get("correct_differential", ""),
-                        d.get("correct_differential_crops", []),
-                    )
+                correct_diff = d.get("correct_differential", "") or ""
                 base = k * 4
                 per_diag_cols[base + 0] = d.get("name", "") or ""
                 per_diag_cols[base + 1] = label

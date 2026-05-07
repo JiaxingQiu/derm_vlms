@@ -161,6 +161,9 @@ def normalize_reasoning_edits(edits, ai_sentences):
     Produces one entry per AI sentence: {original, edited, crops}. ``edited``
     equals ``original`` when the user did not touch the sentence. ``crops``
     is a list of {x, y, w, h} rectangles anchored to the case image.
+
+    User-added entries (original == "added") beyond the AI sentence count
+    are preserved at the end of the list.
     """
     out = []
     edits = edits or []
@@ -182,6 +185,16 @@ def normalize_reasoning_edits(edits, ai_sentences):
         if entry.get("_ev0_moved"):
             result["_ev0_moved"] = True
         out.append(result)
+
+    # Preserve user-added reasoning entries beyond AI sentences
+    for idx in range(len(ai_sentences or []), len(edits)):
+        entry = edits[idx]
+        if isinstance(entry, dict) and entry.get("original") == "added":
+            out.append({
+                "original": "added",
+                "edited": str(entry.get("edited", "") or ""),
+                "crops": entry.get("crops") if isinstance(entry.get("crops"), list) else [],
+            })
     return out
 
 
@@ -201,9 +214,6 @@ def _split_review_to_fields(items):
             "name": item.get("name", "") or "",
             "label": item.get("label", "") or "",
             "correct_differential": item.get("correct_differential", "") or "",
-            "correct_differential_crops": list(
-                item.get("correct_differential_crops", []) or []
-            ),
         }
         out[f"reasoning_{k + 1}"] = list(item.get("reasoning_edits", []) or [])
     return out
@@ -227,7 +237,6 @@ def _merge_review_from_fields(annotation):
             "label": d.get("label", ""),
             "reasoning_edits": list(r),
             "correct_differential": d.get("correct_differential", ""),
-            "correct_differential_crops": list(d.get("correct_differential_crops", []) or []),
         })
     return merged
 
@@ -237,12 +246,17 @@ def normalize_diagnosis_feedback(items, ai_diagnoses):
 
     Each returned entry:
         {
-            "name": str,                       # AI diagnosis name
+            "name": str,                       # AI diagnosis name (preserved)
             "label": "" | "correct" | "incorrect",
             "reasoning_edits": [{"original": str, "edited": str, "crops": [...]}, ...],
-            "correct_differential": str,
-            "correct_differential_crops": [{x,y,w,h}, ...],
+            "correct_differential": str,       # human replacement diagnosis name
         }
+
+    When a user deletes a diagnosis and provides a replacement:
+    - label is set to "incorrect"
+    - correct_differential holds the human's replacement diagnosis name
+    - reasoning_edits[0] has original="deleted" with edited=human reasoning
+
     ``ai_diagnoses`` is the list coming from the annotations_data.json
     (``[{name, reasoning_sentences}]``) so we can always lock the schema
     to what the AI produced and avoid drift between UI edits and source.
@@ -254,19 +268,39 @@ def normalize_diagnosis_feedback(items, ai_diagnoses):
     for idx, ai_d in enumerate(ai_diagnoses or []):
         raw = by_idx.get(idx, {})
         raw_label = raw.get("label") or ""
-        # No action = user agrees with the diagnosis → store as "correct"
         label = _LABEL_MAP.get(raw_label, "correct")
+        raw_edits = raw.get("reasoning_edits") or []
+
+        # Detect prepended "deleted" sentinel and pass it through as-is
+        has_replacement = (
+            len(raw_edits) > 0
+            and isinstance(raw_edits[0], dict)
+            and raw_edits[0].get("original") == "deleted"
+        )
+        if has_replacement:
+            replacement_entry = {
+                "original": "deleted",
+                "edited": str(raw_edits[0].get("edited", "") or ""),
+                "crops": [],
+            }
+            ai_edits = raw_edits[1:]
+        else:
+            replacement_entry = None
+            ai_edits = raw_edits
+
         reasoning_edits = normalize_reasoning_edits(
-            raw.get("reasoning_edits"),
+            ai_edits,
             ai_d.get("reasoning_sentences", []),
         )
-        cd_crops = raw.get("correct_differential_crops")
+
+        if replacement_entry:
+            reasoning_edits = [replacement_entry] + reasoning_edits
+
         out.append({
             "name": ai_d.get("name", raw.get("name", "")),
             "label": label,
             "reasoning_edits": reasoning_edits,
             "correct_differential": str(raw.get("correct_differential", "") or "").strip(),
-            "correct_differential_crops": cd_crops if isinstance(cd_crops, list) else [],
         })
     return out
 

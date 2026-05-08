@@ -45,9 +45,11 @@ GROUNDING_PROMPT_TEMPLATE = (
 # Model loading
 # ---------------------------------------------------------------------------
 
+MAX_IMAGE_SIDE = 1024
+
+
 def load_model(
     model_id: str = MODEL_ID,
-    torch_dtype=torch.bfloat16,
     device_map: str = "auto",
     hf_token: Optional[str] = None,
 ):
@@ -58,7 +60,7 @@ def load_model(
 
     model = AutoModelForImageTextToText.from_pretrained(
         model_id,
-        torch_dtype=torch_dtype,
+        dtype=torch.bfloat16,
         device_map=device_map,
         **kwargs,
     )
@@ -67,6 +69,15 @@ def load_model(
     n_params = sum(p.numel() for p in model.parameters())
     print(f"Loaded {model_id}  ({n_params:,} params)")
     return model, processor
+
+
+def _resize_image(image: Image.Image, max_side: int = MAX_IMAGE_SIDE) -> Image.Image:
+    """Down-scale large images to limit GPU memory during vision encoding."""
+    if max(image.size) <= max_side:
+        return image
+    image = image.copy()
+    image.thumbnail((max_side, max_side), Image.LANCZOS)
+    return image
 
 
 # ---------------------------------------------------------------------------
@@ -110,7 +121,7 @@ def predict_grounding_box(
     image: Image.Image,
     sentence: str,
     max_new_tokens: int = 128,
-) -> dict:
+) -> dict | None:
     """Ask Qwen3-VL to locate the image region for *sentence*.
 
     Returns {"x": float, "y": float, "w": float, "h": float} in normalised
@@ -118,6 +129,7 @@ def predict_grounding_box(
     None on failure.
     """
     prompt = GROUNDING_PROMPT_TEMPLATE.format(sentence=sentence)
+    image = _resize_image(image)
 
     messages = [
         {
@@ -139,14 +151,24 @@ def predict_grounding_box(
 
     input_len = inputs["input_ids"].shape[1]
 
-    with torch.inference_mode():
-        output_ids = model.generate(
-            **inputs,
-            max_new_tokens=max_new_tokens,
-            do_sample=False,
-        )
+    try:
+        with torch.inference_mode():
+            output_ids = model.generate(
+                **inputs,
+                max_new_tokens=max_new_tokens,
+                do_sample=False,
+            )
+        generated = processor.decode(output_ids[0][input_len:], skip_special_tokens=True)
+    except RuntimeError as e:
+        if "out of memory" in str(e).lower():
+            print(f"[OOM] CUDA OOM during generate, clearing cache")
+            torch.cuda.empty_cache()
+            return None
+        raise
+    finally:
+        del inputs
+        torch.cuda.empty_cache()
 
-    generated = processor.decode(output_ids[0][input_len:], skip_special_tokens=True)
     return _parse_bbox_response(generated)
 
 
@@ -200,15 +222,17 @@ def ground_reasoning_sentences(
 
     Grounds both diagnosis names and individual reasoning sentences,
     using the same parsing as the Django annotation interface.
+    Resizes the image once and reuses it for all targets.
 
     Returns list of dicts:
         [{"type": "diagnosis"|"sentence", "diagnosis": str,
           "text": str, "box": {x,y,w,h} | None}, ...]
     """
     parsed = parse_reasoning_sentences(reason_text)
+    resized = _resize_image(image)
     results = []
     for entry in parsed:
-        box = predict_grounding_box(model, processor, image, entry["text"])
+        box = predict_grounding_box(model, processor, resized, entry["text"])
         results.append({
             "type": entry["type"],
             "diagnosis": entry["diagnosis"],

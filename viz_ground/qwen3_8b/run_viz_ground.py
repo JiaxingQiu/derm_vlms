@@ -18,6 +18,7 @@ Usage:
 
 import argparse
 import functools
+import gc
 import glob
 import json
 import os
@@ -125,6 +126,8 @@ def process_csv(model_name: str, csv_path: str, model, processor,
         if len(batch) >= CHECKPOINT_EVERY:
             _checkpoint(batch, out_path)
             batch = []
+            gc.collect()
+            torch.cuda.empty_cache()
 
     if batch:
         _checkpoint(batch, out_path, final=True)

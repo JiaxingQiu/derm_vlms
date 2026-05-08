@@ -466,8 +466,7 @@ def login_view(request):
                     login_id="test",
                     defaults={"full_name": "Test User", "occupation": "Tester", "institution": "Demo"},
                 )
-                if created:
-                    assign_cases_for_user(evaluator)
+                assign_cases_for_user(evaluator)
                 Annotation.objects.filter(dermatologist=evaluator).delete()
                 evaluator.current_case_index = 0
                 evaluator.current_model_index = 0

@@ -132,12 +132,15 @@
             var isReplaced = savedEdits.length > 0 && savedEdits[0] && savedEdits[0].original === 'deleted';
             var replacementReason = isReplaced ? (savedEdits[0].edited || '') : '';
             var aiSentenceEdits = isReplaced ? savedEdits.slice(1) : savedEdits;
+            var aiGroundingBoxes = Array.isArray(aiD.reasoning_grounding_boxes) ? aiD.reasoning_grounding_boxes : [];
             var reasoningEdits = sentences.map(function (original, sIdx) {
                 var savedEdit = aiSentenceEdits[sIdx] || {};
                 var savedCrops = Array.isArray(savedEdit.crops) ? savedEdit.crops : [];
                 var gbox;
                 if ('grounding_box' in savedEdit) {
                     gbox = savedEdit.grounding_box;
+                } else if (aiGroundingBoxes[sIdx]) {
+                    gbox = aiGroundingBoxes[sIdx];
                 } else {
                     gbox = {
                         x: Math.random() * 0.9,
@@ -148,11 +151,13 @@
                 }
                 var boxes = [gbox].concat(savedCrops);
                 var origBox = gbox ? { x: gbox.x, y: gbox.y, w: gbox.w, h: gbox.h } : null;
+                var aiBox = aiGroundingBoxes[sIdx] || null;
                 return {
                     original: String(original || ''),
                     edited: typeof savedEdit.edited === 'string' ? savedEdit.edited : String(original || ''),
                     boxes: boxes,
                     _origBox: origBox,
+                    _aiGroundingBox: aiBox,
                     _ev0Moved: !!savedEdit._ev0_moved,
                     editorOpen: false
                 };
@@ -372,11 +377,11 @@
         diag.name = diag.originalName;
         diag.reasoning_edits.forEach(function (e) {
             e.edited = e.original;
-            var newBox = {
-                x: Math.random() * 0.9,
-                y: Math.random() * 0.75,
-                w: 0.1, h: 0.25
-            };
+            var newBox = e._aiGroundingBox
+                ? { x: e._aiGroundingBox.x, y: e._aiGroundingBox.y,
+                    w: e._aiGroundingBox.w, h: e._aiGroundingBox.h }
+                : { x: Math.random() * 0.9, y: Math.random() * 0.75,
+                    w: 0.1, h: 0.25 };
             e.boxes = [newBox];
             e._origBox = { x: newBox.x, y: newBox.y, w: newBox.w, h: newBox.h };
             e._ev0Moved = false;
@@ -547,11 +552,11 @@
             btnRevert.onclick = function () {
                 deactivateBoxEditor();
                 edit.edited = edit.original;
-                var newBox = {
-                    x: Math.random() * 0.9,
-                    y: Math.random() * 0.75,
-                    w: 0.1, h: 0.25
-                };
+                var newBox = edit._aiGroundingBox
+                    ? { x: edit._aiGroundingBox.x, y: edit._aiGroundingBox.y,
+                        w: edit._aiGroundingBox.w, h: edit._aiGroundingBox.h }
+                    : { x: Math.random() * 0.9, y: Math.random() * 0.75,
+                        w: 0.1, h: 0.25 };
                 edit.boxes = [newBox];
                 edit._origBox = { x: newBox.x, y: newBox.y, w: newBox.w, h: newBox.h };
                 edit._ev0Moved = false;

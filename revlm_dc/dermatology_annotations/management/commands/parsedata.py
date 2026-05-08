@@ -29,9 +29,69 @@ VLMS = {
     "DermatoLlama": "results/dermato_llama_predictions_reason.csv",
 }
 
+VIZ_CSVS = {
+    "MedGemma": "results/medgemma_predictions_reason_viz.csv",
+    "GPT-5.3": "results/gpt53_predictions_reason_viz.csv",
+    "DermatoLlama": "results/dermato_llama_predictions_reason_viz.csv",
+}
+
 RESPONSE_COL = "reason_classify"
 
 STANDARD_MODES = {"photo", "dscope", "combined"}
+
+
+def _load_viz_grounding(viz_path, allowed_modes):
+    """Load the viz grounding CSV and build a lookup: case_id -> list of entries.
+
+    Each entry is {"type", "diagnosis", "text", "box": {x,y,w,h}|None}.
+    """
+    if not viz_path.exists():
+        return {}
+    df = pd.read_csv(viz_path)
+    df = df[df["image_mode"].isin(allowed_modes)]
+    lookup = {}
+    for _, row in df.iterrows():
+        case_id = row["id"]
+        raw_viz = row.get("viz_grounding", "[]")
+        if pd.isna(raw_viz):
+            raw_viz = "[]"
+        try:
+            entries = json.loads(raw_viz)
+        except (json.JSONDecodeError, TypeError):
+            entries = []
+        lookup[case_id] = entries
+    return lookup
+
+
+def _attach_grounding_boxes(diagnoses, viz_entries):
+    """Attach pre-computed grounding boxes from viz_entries to diagnoses.
+
+    For each diagnosis, adds ``grounding_box`` (box for the diagnosis name)
+    and ``reasoning_grounding_boxes`` (list parallel to reasoning_sentences).
+    Matches by diagnosis name + sentence text.
+    """
+    if not viz_entries:
+        return
+
+    diag_boxes = {}
+    sentence_boxes = {}
+    for entry in viz_entries:
+        if not isinstance(entry, dict) or not entry.get("box"):
+            continue
+        diag_name = entry.get("diagnosis", "")
+        text = entry.get("text", "")
+        if entry.get("type") == "diagnosis":
+            diag_boxes[diag_name] = entry["box"]
+        elif entry.get("type") == "sentence":
+            sentence_boxes[(diag_name, text)] = entry["box"]
+
+    for diag in diagnoses:
+        name = diag.get("name", "")
+        diag["grounding_box"] = diag_boxes.get(name)
+        sentences = diag.get("reasoning_sentences", [])
+        diag["reasoning_grounding_boxes"] = [
+            sentence_boxes.get((name, sent)) for sent in sentences
+        ]
 
 
 class Command(BaseCommand):
@@ -50,6 +110,12 @@ class Command(BaseCommand):
             default=False,
             help="Also include the 'virtual' image mode.",
         )
+        parser.add_argument(
+            "--no-viz-grounding",
+            action="store_true",
+            default=False,
+            help="Skip loading visual grounding boxes from *_viz.csv files.",
+        )
 
     def handle(self, *args, **options):
         allowed_modes = set(options["modes"])
@@ -64,7 +130,10 @@ class Command(BaseCommand):
         data_dir.mkdir(parents=True, exist_ok=True)
         image_dst.mkdir(parents=True, exist_ok=True)
 
+        use_viz = not options["no_viz_grounding"]
+
         vlm_frames = {}
+        viz_lookups = {}
         for name, rel_path in VLMS.items():
             csv_path = PROJECT_ROOT / rel_path
             if not csv_path.exists():
@@ -83,6 +152,19 @@ class Command(BaseCommand):
             per_mode = df["image_mode"].value_counts().to_dict()
             self.stdout.write(f"  {name}: {len(df)} rows  {per_mode}")
 
+            if use_viz and name in VIZ_CSVS:
+                viz_path = PROJECT_ROOT / VIZ_CSVS[name]
+                viz_lookup = _load_viz_grounding(viz_path, allowed_modes)
+                if viz_lookup:
+                    viz_lookups[name] = viz_lookup
+                    self.stdout.write(
+                        f"    + viz grounding: {len(viz_lookup)} cases from {viz_path.name}"
+                    )
+                else:
+                    self.stdout.write(self.style.WARNING(
+                        f"    + viz grounding: not found or empty ({viz_path.name})"
+                    ))
+
         if not vlm_frames:
             self.stdout.write(self.style.ERROR("No prediction data found. Aborting."))
             return
@@ -94,6 +176,7 @@ class Command(BaseCommand):
 
         annotations = {}
         parse_stats = {name: {"matched": 0, "missed": 0} for name in vlm_frames}
+        viz_stats = {name: {"attached": 0, "missing": 0} for name in vlm_frames}
 
         for case_id in all_ids:
             case = {"image_path": f"{case_id}.jpg"}
@@ -110,6 +193,12 @@ class Command(BaseCommand):
                     parse_stats[model_name]["matched"] += 1
                 else:
                     parse_stats[model_name]["missed"] += 1
+
+                if model_name in viz_lookups and case_id in viz_lookups[model_name]:
+                    _attach_grounding_boxes(diagnoses, viz_lookups[model_name][case_id])
+                    viz_stats[model_name]["attached"] += 1
+                else:
+                    viz_stats[model_name]["missing"] += 1
 
                 case[model_name] = {
                     "raw_response": str(raw),
@@ -128,9 +217,11 @@ class Command(BaseCommand):
         self.stdout.write("\nParse statistics:")
         for name, stats in parse_stats.items():
             total = stats["matched"] + stats["missed"]
+            vs = viz_stats[name]
+            viz_info = f"  viz: {vs['attached']}/{vs['attached']+vs['missing']}" if use_viz else ""
             self.stdout.write(
                 f"  {name:20s}  diagnoses found: {stats['matched']}/{total}"
-                f"  missed: {stats['missed']}"
+                f"  missed: {stats['missed']}{viz_info}"
             )
 
         copied = 0

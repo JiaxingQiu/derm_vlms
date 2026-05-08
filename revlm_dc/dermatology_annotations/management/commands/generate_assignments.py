@@ -16,6 +16,8 @@ from dermatology_annotations.assignments import (
     DEFAULT_SEED,
     DEFAULT_MAX_LESIONS,
     DEFAULT_ENABLED_FACTORS,
+    IRR_COUNT,
+    RANDOM_COUNT,
     assign_cases_for_user,
     build_case_list_for_user,
     get_eligible_lesions,
@@ -42,7 +44,8 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         self.stdout.write(
             f"Settings: seed={DEFAULT_SEED}  "
-            f"max_lesions={DEFAULT_MAX_LESIONS}  "
+            f"irr={IRR_COUNT}  random={RANDOM_COUNT}  "
+            f"total={DEFAULT_MAX_LESIONS}  "
             f"enabled_factors={DEFAULT_ENABLED_FACTORS or '(none)'}"
         )
 

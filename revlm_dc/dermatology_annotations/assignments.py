@@ -20,7 +20,9 @@ FACTORS = {
 }
 
 DEFAULT_SEED = 42
-DEFAULT_MAX_LESIONS = 100
+IRR_COUNT = 26        # first N lesions shared across all users (inter-rater reliability)
+RANDOM_COUNT = 75     # per-user sample from the remaining pool
+DEFAULT_MAX_LESIONS = IRR_COUNT + RANDOM_COUNT  # 101
 DEFAULT_ENABLED_FACTORS = ()  # () = all users see default "combined"; ("image_mode",) = randomize photo/dscope/combined per user
 
 
@@ -56,6 +58,26 @@ def get_eligible_lesions(annotations_data=None):
                   if required_modes.issubset(modes))
 
 
+def _select_lesions_for_user(user_id, eligible_lesions, seed=DEFAULT_SEED):
+    """Return the lesion list for one user: IRR anchor + per-user sample.
+
+    The first IRR_COUNT lesions are shared across all users.  The next
+    RANDOM_COUNT are sampled (without replacement, preserving original
+    order) from the remaining pool using a per-user deterministic hash.
+    """
+    irr = eligible_lesions[:IRR_COUNT]
+    pool = eligible_lesions[IRR_COUNT:]
+
+    if len(pool) <= RANDOM_COUNT:
+        return irr + pool
+
+    scores = [(_stable_hash(seed, "sample", user_id, lid), lid) for lid in pool]
+    selected = {lid for _, lid in sorted(scores)[:RANDOM_COUNT]}
+    sampled = [lid for lid in pool if lid in selected]
+
+    return irr + sampled
+
+
 def build_case_list_for_user(user_id, eligible_lesions, seed=DEFAULT_SEED,
                              max_lesions=DEFAULT_MAX_LESIONS,
                              enabled_factors=DEFAULT_ENABLED_FACTORS):
@@ -64,9 +86,7 @@ def build_case_list_for_user(user_id, eligible_lesions, seed=DEFAULT_SEED,
     Returns a list of ``(order, case_id)`` tuples.
     """
     enabled_factors = set(enabled_factors)
-    lesions = eligible_lesions
-    if max_lesions and max_lesions < len(lesions):
-        lesions = lesions[:max_lesions]
+    lesions = _select_lesions_for_user(user_id, eligible_lesions, seed)
 
     factor_groups = {}
     for factor_name, spec in FACTORS.items():

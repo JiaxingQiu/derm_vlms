@@ -46,8 +46,14 @@ def get_user_case_ids(dermatologist):
     )
 
 
-def get_model_keys(case_data):
-    return [k for k in case_data if k != "image_path" and isinstance(case_data[k], dict)]
+def get_model_keys(case_data, case_id=None):
+    """Return model keys for a case, deterministically shuffled per lesion."""
+    keys = [k for k in case_data if k != "image_path" and isinstance(case_data[k], dict)]
+    if case_id is not None:
+        from .assignments import DEFAULT_SEED, _stable_hash
+        lesion_id = case_id.rsplit("_", 1)[0]
+        keys.sort(key=lambda k: _stable_hash(DEFAULT_SEED, "model_order", lesion_id, k))
+    return keys
 
 
 # ---------------------------------------------------------------------------
@@ -361,7 +367,7 @@ def build_page_sequence(case_ids, annotations_data):
     pages = []
     for case_id in case_ids:
         case_data = annotations_data.get(case_id, {})
-        model_keys = get_model_keys(case_data)
+        model_keys = get_model_keys(case_data, case_id)
         for model_key in model_keys:
             pages.append((case_id, model_key))
     return pages
@@ -551,7 +557,7 @@ def annotations_view(request):
                     mi = 0
                 else:
                     case_data = annotations_data[case_id]
-                    mi = get_model_keys(case_data).index(model_key)
+                    mi = get_model_keys(case_data, case_id).index(model_key)
                 dermatologist.current_case_index = ci
                 dermatologist.current_model_index = mi
                 dermatologist.save()
@@ -646,7 +652,7 @@ def annotations_view(request):
         else:
             nav_case_id, nav_model_key = pages[new_flat]
             nav_ci = case_ids.index(nav_case_id)
-            nav_mi = get_model_keys(annotations_data[nav_case_id]).index(nav_model_key)
+            nav_mi = get_model_keys(annotations_data[nav_case_id], nav_case_id).index(nav_model_key)
             dermatologist.current_case_index = nav_ci
             dermatologist.current_model_index = nav_mi
 
@@ -674,13 +680,17 @@ def annotations_view(request):
         "other_feedback_crops": of.get("crops", []),
     }
 
-    all_model_keys = get_model_keys(current_case_data)
+    all_model_keys = get_model_keys(current_case_data, current_case_id)
     model_num = all_model_keys.index(current_model_key) + 1 if current_model_key in all_model_keys else 1
     model_display_name = "AI Model " + str(model_num)
+
+    lesion_id = current_case_id.rsplit("_", 1)[0] if "_" in current_case_id else current_case_id
+    lesion_display_name = f"Lesion {lesion_id}"
 
     context = {
         "login_id": login_id,
         "case_id": current_case_id,
+        "lesion_display_name": lesion_display_name,
         "case_data": current_case_data,
         "model_key": current_model_key,
         "model_display_name": model_display_name,

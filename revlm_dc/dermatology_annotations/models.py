@@ -11,6 +11,7 @@ class Dermatologist(models.Model):
     # --- Profile (collected at registration) ---
     full_name = models.CharField(max_length=200, default="", blank=True)
     occupation = models.CharField(max_length=200, default="", blank=True)
+    years_experience = models.PositiveIntegerField(null=True, blank=True)
     institution = models.CharField(max_length=200, default="", blank=True)
     registered_at = models.DateTimeField(auto_now_add=True)
 

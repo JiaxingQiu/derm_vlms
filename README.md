@@ -134,97 +134,55 @@ download:
   overwrite: false
 ```
 
-# Website
 
-## Local Deploymemt
-
-### First-time setup
-
-The following codes will create the database, the migrations (Python scripts that create the columns specified in `models.py`)
+# Local Deployment
 
 ```bash
+conda activate dermato_llama
 cd revlm_dc
-python manage.py makemigrations
+python manage.py makemigrations dermatology_annotations
 python manage.py migrate
 python manage.py parsedata
-python manage.py runserver 0.0.0.0:8000
+python manage.py generate_assignments
+python manage.py runserver
 ```
 
-`parsedata` reads `results/*_predictions_all.csv`, parses VLM responses into diagnoses + descriptions, writes `revlm_dc/data/annotations_data.json`, and copies combined images to `revlm_dc/images/`.
+| Step | What it does |
+|------|-------------|
+| `makemigrations` | Generate migration files from `models.py` changes |
+| `migrate` | Apply migrations to the database (SQLite locally, PostgreSQL in production) |
+| `parsedata` | Parse `results/*_predictions_reason.csv` and `*_viz.csv` into `data/annotations_data.json`, copy images to `images/` |
+| `generate_assignments` | Assign lesions to all users: 26 shared IRR + 75 random per user (see `assignments.py`). Supports `--users`, `--dry-run` |
+| `runserver` | Start the Django dev server |
 
-#### User management
+### Resetting the local database
 
-Users register themselves through the web interface (login page → "New? Register"). On registration, the system collects their full name, occupation, and institution, and auto-assigns RCT-balanced lesions.
-
-#### Test account
-
-A built-in `test` username is available for demo purposes. Anyone can log in with username `test` — no registration required. Every login as `test` **wipes all previous annotations** and resets progress to page 1, so each session starts fresh.
-
-### Deployment after Updates to Database
-
-**WARNING:** Do NOT do it in production or all data will be lost. Do it only during Debug/Local Deployments.
-
-In case there are modifications to `models.py` (fields stored), run the following codes
-
-Locally, we can reset the database 
+**Local dev only — never do this in production.**
 
 ```bash
 rm -f db.sqlite3
 find dermatology_annotations/migrations -type f ! -name '__init__.py' -delete
 find dermatology_annotations/migrations -type d -name '__pycache__' -exec rm -rf {} +
-
-python manage.py makemigrations dermatology_annotations
-python manage.py migrate
-
-python manage.py runserver
 ```
 
-In production, we can avoid resetting the database by updating any pending migrations
+Then re-run the full setup above.
+
+### Admin panel
 
 ```bash
-# if you changed models.py locally
-python manage.py makemigrations dermatology_annotations
-
-# apply pending migrations to postgres
-python manage.py migrate
-
-# optional checks
-python manage.py showmigrations
-```
-
-### Updating Server after New Annotations/Predictions Arrive
-
-Re-parse and run the server. User assignments are managed automatically via the database.
-
-```bash
-cd revlm_dc
-python manage.py parsedata
-python manage.py runserver
-```
-
-### Run admin
-
-We use an admin tab for supervising data collection in real time.
-
-To enable it, run the following commands
-
-```bash
-cd revlm_dc
-conda activate dermato_llama
 python manage.py createsuperuser
 ```
 
-Then create user name, email and password. [http://localhost:8000/admin/](http://localhost:8000/admin/)
+Then visit [http://localhost:8000/admin/](http://localhost:8000/admin/). The admin panel shows per-user progress, assignments, and supports CSV export of all annotations.
 
-# PostgreSQL Server
+### Notes
 
-Follow the instructions from this tutorial to deploy the server on [Azure](https://www.youtube.com/watch?v=sEImMaovc1Q)
+- **User management:** Users register through the web interface (login → "New? Register"). On registration, the system collects name, occupation, institution, and auto-assigns lesions.
+- **Test account:** Log in with username `test` — no registration required. Each login wipes previous annotations and resets to page 1.
 
-# Production Deployment
 
-Follow `revlm_dc/DEPLOYMENT.md` for first-time server setup (Nginx, Gunicorn, systemd, etc.).
 
-## Re-deploying a New Version of the Interface
+# Re-deploying a New Version of the Interface
 
 **Prerequisites (on your dev machine, before pushing):**
 
@@ -237,10 +195,16 @@ conda activate ...
 python manage.py makemigrations dermatology_annotations
 ```
 
-1. Commit everything including migration files and push:
+3. If new prediction or visual-grounding CSVs were generated, upload them to the blob:
 
 ```bash
 cd ..
+python upload_to_blob.py configs/blob_config.yaml
+```
+
+4. Commit everything including migration files and push:
+
+```bash
 git add .
 git commit -m "description of changes"
 git push origin <branch-name>
@@ -257,7 +221,13 @@ cd /home/azureuser/derm_vlms
 git pull origin <branch-name>
 ```
 
-**2. Apply DB migrations**
+**2. Download new data from blob** (if new CSVs were uploaded)
+
+```bash
+python download_from_blob.py configs/blob_config.yaml
+```
+
+**3. Apply DB migrations**
 
 ```bash
 cd revlm_dc
@@ -266,32 +236,40 @@ python manage.py showmigrations   # check for unapplied migrations (no [X])
 python manage.py migrate          # apply them to PostgreSQL
 ```
 
-**3. Re-parse data** (if prediction CSVs or parsing logic changed)
+**4. Re-parse data** (if prediction CSVs or parsing logic changed)
 
 ```bash
 python manage.py parsedata
 ```
 
-**4. Collect static files** (if templates, JS, or CSS changed)
+**5. Regenerate assignments** (if assignment logic, lesion counts, or user list changed)
+
+```bash
+python manage.py generate_assignments
+```
+
+This uses defaults from `assignments.py` (`IRR_COUNT=26` shared lesions + `RANDOM_COUNT=75` per-user random lesions = 101 total). Use `--users alice bob` to target specific users, or `--dry-run` to preview without writing.
+
+**6. Collect static files** (if templates, JS, or CSS changed)
 
 ```bash
 python manage.py collectstatic --noinput
 ```
 
-**5. Restart the app service**
+**7. Restart the app service**
 
 ```bash
 sudo systemctl restart revlm_dc
 sudo systemctl status revlm_dc --no-pager
 ```
 
-**6. Reload Nginx** (only if the Nginx config changed)
+**8. Reload Nginx** (only if the Nginx config changed)
 
 ```bash
 sudo nginx -t && sudo systemctl reload nginx
 ```
 
-**7. Verify**
+**9. Verify**
 
 Visit [http://20.246.91.185](http://20.246.91.185) and test the interface. If something goes wrong:
 

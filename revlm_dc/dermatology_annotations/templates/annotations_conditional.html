@@ -176,6 +176,7 @@
                     });
                 }
             }
+            var replacementCrops = isReplaced && Array.isArray(savedEdits[0].crops) ? savedEdits[0].crops : [];
             return {
                 name: String(aiD.name || ''),
                 originalName: String(aiD.name || ''),
@@ -184,7 +185,8 @@
                 reasoning_edits: reasoningEdits,
                 deleted: isReplaced,
                 replacement_name: isReplaced ? String(savedD.correct_differential || '') : '',
-                replacement_reason: replacementReason
+                replacement_reason: replacementReason,
+                replacement_crops: replacementCrops
             };
         });
     }
@@ -219,6 +221,13 @@
                 updateText: function (v) { edit.edited = v; }
             };
         }
+        if (kind === 'replacement') {
+            return {
+                getCrops: function () { return diag.replacement_crops; },
+                setCrops: function (c) { diag.replacement_crops = c; },
+                updateText: function (v) { diag.replacement_reason = v; }
+            };
+        }
         return null;
     };
 
@@ -242,7 +251,7 @@
                 if (d.deleted) {
                     label = 'incorrect';
                     correctDiff = d.replacement_name || '';
-                    edits = [{original: 'deleted', edited: d.replacement_reason || ''}].concat(edits);
+                    edits = [{original: 'deleted', edited: d.replacement_reason || '', crops: d.replacement_crops || []}].concat(edits);
                 }
                 return {
                     name: d.originalName,
@@ -374,6 +383,7 @@
         diag.deleted = false;
         diag.replacement_name = '';
         diag.replacement_reason = '';
+        diag.replacement_crops = [];
         diag.name = diag.originalName;
         diag.reasoning_edits.forEach(function (e) {
             e.edited = e.original;
@@ -588,6 +598,7 @@
             deactivateBoxEditor();
             diag.deleted = true;
             diag.expanded = true;
+            diag.replacement_crops = diag.replacement_crops || [];
             syncHiddenPayload();
             render();
         };
@@ -629,6 +640,17 @@
             };
             head.appendChild(diagRevert);
 
+            head.addEventListener('mouseenter', function () {
+                var items = [];
+                (diag.replacement_crops || []).forEach(function (crop, i) {
+                    if (crop) items.push({ box: crop, label: 'ev ' + (i + 1) });
+                });
+                if (items.length) showGroundingBoxes(items);
+            });
+            head.addEventListener('mouseleave', function () {
+                hideGroundingBoxes();
+            });
+
             head.addEventListener('click', function (e) {
                 if (e.target.closest('.drag-handle')) return;
                 diag.expanded = !diag.expanded;
@@ -660,8 +682,11 @@
             reasonTa.rows = 3;
             reasonTa.placeholder = 'Why? (please provide your reasoning and visual evidence.)';
             reasonTa.value = diag.replacement_reason;
+            reasonTa.dataset.kind = 'replacement';
+            reasonTa.dataset.diagIndex = String(dIdx);
             reasonTa.addEventListener('input', function () {
                 diag.replacement_reason = reasonTa.value;
+                syncFieldCrops(reasonTa);
                 syncHiddenPayload();
             });
             repDiv.appendChild(reasonTa);

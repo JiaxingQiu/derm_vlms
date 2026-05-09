@@ -1,8 +1,7 @@
 """(Re)generate RCT assignments using defaults from assignments.py.
 
-Reads DEFAULT_SEED, DEFAULT_MAX_LESIONS, and DEFAULT_ENABLED_FACTORS
-directly — no YAML config file needed.  Existing assignments for each
-user are replaced.
+Processes users in ``registered_at`` order and simulates lesion counts
+in-memory so the result is fully deterministic and reproducible.
 
 Usage:
     python manage.py generate_assignments              # all users in DB
@@ -14,13 +13,12 @@ from django.core.management.base import BaseCommand
 
 from dermatology_annotations.assignments import (
     DEFAULT_SEED,
-    DEFAULT_MAX_LESIONS,
+    LESIONS_PER_USER,
+    MIN_ANNOTATORS,
+    MAX_ANNOTATORS,
     DEFAULT_ENABLED_FACTORS,
-    IRR_COUNT,
-    RANDOM_COUNT,
-    assign_cases_for_user,
-    build_case_list_for_user,
     get_eligible_lesions,
+    regenerate_all_assignments,
 )
 from dermatology_annotations.models import Dermatologist
 
@@ -44,8 +42,8 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         self.stdout.write(
             f"Settings: seed={DEFAULT_SEED}  "
-            f"irr={IRR_COUNT}  random={RANDOM_COUNT}  "
-            f"total={DEFAULT_MAX_LESIONS}  "
+            f"per_user={LESIONS_PER_USER}  "
+            f"overlap=[{MIN_ANNOTATORS},{MAX_ANNOTATORS}]  "
             f"enabled_factors={DEFAULT_ENABLED_FACTORS or '(none)'}"
         )
 
@@ -67,21 +65,18 @@ class Command(BaseCommand):
             self.stdout.write(self.style.WARNING("No users to assign."))
             return
 
+        # Canonical order: registration time, then login_id as tiebreaker
+        evaluators = evaluators.order_by("registered_at", "login_id")
+
         dry = options["dry_run"]
         if dry:
             self.stdout.write(self.style.WARNING("DRY RUN — no changes will be written.\n"))
 
         total = 0
-        for evaluator in evaluators.order_by("login_id"):
-            if dry:
-                case_list, _ = build_case_list_for_user(
-                    evaluator.login_id, eligible,
-                    DEFAULT_SEED, DEFAULT_MAX_LESIONS, DEFAULT_ENABLED_FACTORS,
-                )
-                n = len(case_list)
-            else:
-                assignments = assign_cases_for_user(evaluator, eligible)
-                n = len(assignments)
+        for evaluator, case_list in regenerate_all_assignments(
+            evaluators, eligible, dry_run=dry,
+        ):
+            n = len(case_list)
             self.stdout.write(f"  {evaluator.login_id}: {n} assignments")
             total += n
 

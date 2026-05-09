@@ -9,6 +9,7 @@ from urllib.parse import urlencode
 from django.views.decorators.cache import never_cache
 from django.views.decorators.csrf import csrf_exempt
 from django.conf import settings
+from django.db import transaction
 from django.http import JsonResponse
 from django.urls import reverse
 from django.shortcuts import redirect, render
@@ -284,10 +285,11 @@ def normalize_diagnosis_feedback(items, ai_diagnoses):
             and raw_edits[0].get("original") == "deleted"
         )
         if has_replacement:
+            raw_rep_crops = raw_edits[0].get("crops", [])
             replacement_entry = {
                 "original": "deleted",
                 "edited": str(raw_edits[0].get("edited", "") or ""),
-                "crops": [],
+                "crops": raw_rep_crops if isinstance(raw_rep_crops, list) else [],
             }
             ai_edits = raw_edits[1:]
         else:
@@ -440,26 +442,37 @@ def login_view(request):
             show_register = True
             full_name = request.POST.get("full_name", "").strip()
             occupation = request.POST.get("occupation", "").strip()
+            years_experience = request.POST.get("years_experience", "").strip()
             institution = request.POST.get("institution", "").strip()
             form_data.update({
                 "full_name": full_name,
                 "occupation": occupation,
+                "years_experience": years_experience,
                 "institution": institution,
             })
 
-            if not login_id or not full_name or not occupation or not institution:
+            if not login_id or not full_name or not occupation or not years_experience or not institution:
                 error_message = "All fields are required."
             elif Dermatologist.objects.filter(login_id=login_id).exists():
                 error_message = "Username already taken."
             else:
                 from .assignments import assign_cases_for_user
-                evaluator = Dermatologist.objects.create(
-                    login_id=login_id,
-                    full_name=full_name,
-                    occupation=occupation,
-                    institution=institution,
-                )
-                assign_cases_for_user(evaluator)
+                # Serialize registrations so concurrent requests don't read
+                # stale lesion counts (the new algorithm is sequential).
+                with transaction.atomic():
+                    _lock_qs = (Dermatologist.objects
+                                .select_for_update()
+                                .order_by("pk")[:1])
+                    list(_lock_qs)  # force evaluation to acquire lock
+
+                    evaluator = Dermatologist.objects.create(
+                        login_id=login_id,
+                        full_name=full_name,
+                        occupation=occupation,
+                        years_experience=int(years_experience),
+                        institution=institution,
+                    )
+                    assign_cases_for_user(evaluator)
                 raw_token, _ = create_tab_auth_session(login_id)
                 return redirect(auth_url("annotations", raw_token))
 

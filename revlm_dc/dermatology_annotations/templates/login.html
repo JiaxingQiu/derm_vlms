@@ -54,6 +54,12 @@
                        placeholder="e.g. Dermatologist, Resident">
             </div>
             <div class="form-group">
+                <label for="years_experience">Years at this occupation<span class="req-star">*</span></label>
+                <input type="number" class="form-control" name="years_experience" id="years_experience"
+                       value="{{ form_data.years_experience|default:'' }}"
+                       min="0" placeholder="e.g. 5">
+            </div>
+            <div class="form-group">
                 <label for="institution">Institution<span class="req-star">*</span></label>
                 <input type="text" class="form-control" name="institution" id="institution"
                        value="{{ form_data.institution|default:'' }}"

@@ -138,7 +138,9 @@
                 var savedEdit = aiSentenceEdits[sIdx] || {};
                 var savedCrops = Array.isArray(savedEdit.crops) ? savedEdit.crops : [];
                 var gbox;
-                if ('grounding_box' in savedEdit) {
+                if ('ev0_edited' in savedEdit) {
+                    gbox = savedEdit.ev0_edited;
+                } else if ('grounding_box' in savedEdit) {
                     gbox = savedEdit.grounding_box;
                 } else if (aiGroundingBoxes[sIdx]) {
                     gbox = aiGroundingBoxes[sIdx];
@@ -153,7 +155,17 @@
                 var boxes = [gbox].concat(savedCrops);
                 var origBox = gbox ? { x: gbox.x, y: gbox.y, w: gbox.w, h: gbox.h } : null;
                 var _raw = aiGroundingBoxes[sIdx];
-                var aiBox = _raw ? { x: _raw.x, y: _raw.y, w: _raw.w, h: _raw.h } : null;
+                var aiBox;
+                if (_raw) {
+                    aiBox = { x: _raw.x, y: _raw.y, w: _raw.w, h: _raw.h };
+                } else if (savedEdit.ev0_original && typeof savedEdit.ev0_original === 'object') {
+                    aiBox = { x: savedEdit.ev0_original.x, y: savedEdit.ev0_original.y,
+                              w: savedEdit.ev0_original.w, h: savedEdit.ev0_original.h };
+                } else if (gbox) {
+                    aiBox = { x: gbox.x, y: gbox.y, w: gbox.w, h: gbox.h };
+                } else {
+                    aiBox = null;
+                }
                 return {
                     original: String(original || ''),
                     edited: typeof savedEdit.edited === 'string' ? savedEdit.edited : String(original || ''),
@@ -243,7 +255,8 @@
                     return {
                         original: e.original,
                         edited: e.edited,
-                        grounding_box: e.boxes[0] || null,
+                        ev0_original: e._aiGroundingBox || null,
+                        ev0_edited: e.boxes[0] || null,
                         crops: e.boxes.slice(1).filter(function (b) { return !!b; }),
                         _ev0_moved: !!e._ev0Moved
                     };
@@ -773,6 +786,8 @@
                 var origLabel = document.createElement('div');
                 origLabel.className = 'sub-label';
                 origLabel.style.padding = '0 12px';
+                origLabel.style.textTransform = 'none';
+                origLabel.style.fontSize = '.9rem';
                 origLabel.textContent = 'What is wrong in AI reasoning for its original diagnosis?';
                 exp.appendChild(origLabel);
 

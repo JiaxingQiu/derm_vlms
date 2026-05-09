@@ -110,7 +110,8 @@
     // drag-to-crop, evidence × remove, etc.) still run.
     document.addEventListener('mousedown', function (e) {
         var active = document.activeElement;
-        if (!active || !active.classList || !active.classList.contains('reason-textarea')) return;
+        if (!active || !active.classList) return;
+        if (!active.classList.contains('reason-textarea') && active.dataset.kind !== 'replacement') return;
         if (e.target.closest && e.target.closest('.left-panel')) {
             e.preventDefault();
         }
@@ -151,7 +152,8 @@
                 }
                 var boxes = [gbox].concat(savedCrops);
                 var origBox = gbox ? { x: gbox.x, y: gbox.y, w: gbox.w, h: gbox.h } : null;
-                var aiBox = aiGroundingBoxes[sIdx] || null;
+                var _raw = aiGroundingBoxes[sIdx];
+                var aiBox = _raw ? { x: _raw.x, y: _raw.y, w: _raw.w, h: _raw.h } : null;
                 return {
                     original: String(original || ''),
                     edited: typeof savedEdit.edited === 'string' ? savedEdit.edited : String(original || ''),
@@ -397,6 +399,40 @@
             e._ev0Moved = false;
             e.editorOpen = false;
         });
+    }
+
+    var _repEditorIdxMap = [];
+
+    function _activateReplacementEditor(dIdx) {
+        var diag = state.diagnosis_feedback[dIdx];
+        if (!diag) return;
+        var ta = document.querySelector('textarea[data-kind="replacement"][data-diag-index="' + dIdx + '"]');
+        if (!ta) return;
+        var crops = diag.replacement_crops || [];
+        var boxes = [], labels = [], idxMap = [];
+        crops.forEach(function (c, i) { if (c) { boxes.push(c); labels.push('ev ' + (i + 1)); idxMap.push(i); } });
+        _repEditorIdxMap = idxMap;
+        if (!boxes.length) return;
+        activateBoxEditor(boxes, labels,
+            function (visIdx, updatedBox) {
+                diag.replacement_crops[idxMap[visIdx]] = updatedBox;
+                syncHiddenPayload();
+            },
+            function (visIdx) {
+                var realIdx = idxMap[visIdx];
+                diag.replacement_crops.splice(realIdx, 1);
+                var text = ta.value;
+                var removed = realIdx + 1;
+                text = text.replace(new RegExp('\\[ev\\s+' + removed + '\\]\\s?', 'g'), '');
+                for (var n = removed + 1; n <= diag.replacement_crops.length + 1; n++)
+                    text = text.replace(new RegExp('\\[ev\\s+' + n + '\\]', 'g'), '[ev ' + (n - 1) + ']');
+                ta.value = text;
+                diag.replacement_reason = text;
+                deactivateBoxEditor();
+                syncHiddenPayload();
+                _activateReplacementEditor(dIdx);
+            }
+        );
     }
 
     // --- Render ---
@@ -686,12 +722,69 @@
             reasonTa.dataset.diagIndex = String(dIdx);
             reasonTa.addEventListener('input', function () {
                 diag.replacement_reason = reasonTa.value;
+                var prevCropCount = (diag.replacement_crops || []).length;
                 syncFieldCrops(reasonTa);
                 syncHiddenPayload();
+                var newCropCount = (diag.replacement_crops || []).length;
+                if (prevCropCount !== newCropCount && document.activeElement === reasonTa) {
+                    deactivateBoxEditor();
+                    _activateReplacementEditor(dIdx);
+                }
             });
+            reasonTa.addEventListener('focus', function () {
+                _activateReplacementEditor(dIdx);
+            });
+            reasonTa.addEventListener('blur', function () {
+                if (_skipNextBlur) { _skipNextBlur = false; return; }
+                deactivateBoxEditor();
+            });
+            function _repCursorSelectBox() {
+                var pos = reasonTa.selectionStart;
+                var text = reasonTa.value;
+                var re = /\[ev\s+(\d+)\]/g, m;
+                while ((m = re.exec(text)) !== null) {
+                    if (pos >= m.index && pos <= m.index + m[0].length) {
+                        var evN = parseInt(m[1], 10);
+                        var visIdx = _repEditorIdxMap.indexOf(evN - 1);
+                        if (visIdx >= 0) _selectBox(visIdx);
+                        return;
+                    }
+                }
+            }
+            reasonTa.addEventListener('click', _repCursorSelectBox);
+            reasonTa.addEventListener('keyup', _repCursorSelectBox);
             repDiv.appendChild(reasonTa);
 
+            repDiv.addEventListener('mouseenter', function () {
+                var crops = diag.replacement_crops || [];
+                var items = [];
+                crops.forEach(function (crop, i) {
+                    if (crop) items.push({ box: crop, label: 'ev ' + (i + 1) });
+                });
+                if (items.length) showGroundingBoxes(items);
+            });
+            repDiv.addEventListener('mouseleave', function () {
+                hideGroundingBoxes();
+            });
+
             exp.appendChild(repDiv);
+
+            if (diag.reasoning_edits.length) {
+                var origLabel = document.createElement('div');
+                origLabel.className = 'sub-label';
+                origLabel.style.padding = '0 12px';
+                origLabel.textContent = 'What is wrong in AI reasoning for its original diagnosis?';
+                exp.appendChild(origLabel);
+
+                var origList = document.createElement('div');
+                origList.className = 'reason-list';
+                origList.style.padding = '0 12px 12px 12px';
+                diag.reasoning_edits.forEach(function (edit, sIdx) {
+                    origList.appendChild(renderReasonRow(diag, dIdx, edit, sIdx));
+                });
+                exp.appendChild(origList);
+            }
+
             card.appendChild(exp);
 
             // Hide the card-del button on deleted cards (already deleted)
@@ -873,6 +966,10 @@
             _skipNextBlur = true;
             deactivateBoxEditor();
             render();
+        } else if (ta && ta.dataset.kind === 'replacement') {
+            deactivateBoxEditor();
+            var _rdIdx = Number(ta.dataset.diagIndex);
+            _activateReplacementEditor(_rdIdx);
         }
     };
 

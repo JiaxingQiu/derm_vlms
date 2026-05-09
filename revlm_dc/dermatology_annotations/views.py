@@ -181,7 +181,7 @@ def normalize_reasoning_edits(edits, ai_sentences):
             edited = entry.get("text", original)
         result = {
             "original": str(original),
-            "edited": str(edited if edited else original),
+            "edited": str(edited if edited is not None else original),
             "crops": entry.get("crops") if isinstance(entry.get("crops"), list) else [],
         }
         gbox = entry.get("grounding_box")

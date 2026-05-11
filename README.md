@@ -134,7 +134,6 @@ download:
   overwrite: false
 ```
 
-
 # Local Deployment
 
 ```bash
@@ -147,13 +146,15 @@ python manage.py generate_assignments
 python manage.py runserver
 ```
 
-| Step | What it does |
-|------|-------------|
-| `makemigrations` | Generate migration files from `models.py` changes |
-| `migrate` | Apply migrations to the database (SQLite locally, PostgreSQL in production) |
-| `parsedata` | Parse `results/*_predictions_reason.csv` and `*_viz.csv` into `data/annotations_data.json`, copy images to `images/` |
+
+| Step                   | What it does                                                                                                            |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `makemigrations`       | Generate migration files from `models.py` changes                                                                       |
+| `migrate`              | Apply migrations to the database (SQLite locally, PostgreSQL in production)                                             |
+| `parsedata`            | Parse `results/*_predictions_reason.csv` and `*_viz.csv` into `data/annotations_data.json`, copy images to `images/`    |
 | `generate_assignments` | Assign lesions to all users: 26 shared IRR + 75 random per user (see `assignments.py`). Supports `--users`, `--dry-run` |
-| `runserver` | Start the Django dev server |
+| `runserver`            | Start the Django dev server                                                                                             |
+
 
 ### Resetting the local database
 
@@ -180,8 +181,6 @@ Then visit [http://localhost:8000/admin/](http://localhost:8000/admin/). The adm
 - **User management:** Users register through the web interface (login → "New? Register"). On registration, the system collects name, occupation, institution, and auto-assigns lesions.
 - **Test account:** Log in with username `test` — no registration required. Each login wipes previous annotations and resets to page 1.
 
-
-
 # Re-deploying a New Version of the Interface
 
 **Prerequisites (on your dev machine, before pushing):**
@@ -195,14 +194,14 @@ conda activate ...
 python manage.py makemigrations dermatology_annotations
 ```
 
-3. If new prediction or visual-grounding CSVs were generated, upload them to the blob:
+1. If new prediction or visual-grounding CSVs were generated, upload them to the blob:
 
 ```bash
 cd ..
 python upload_to_blob.py configs/blob_config.yaml
 ```
 
-4. Commit everything including migration files and push:
+1. Commit everything including migration files and push:
 
 ```bash
 git add .
@@ -219,6 +218,7 @@ git push origin <branch-name>
 ```bash
 cd /home/azureuser/derm_vlms
 git pull origin <branch-name>
+conda activate derm_django_env
 ```
 
 **2. Download new data from blob** (if new CSVs were uploaded)
@@ -231,7 +231,6 @@ python download_from_blob.py configs/blob_config.yaml
 
 ```bash
 cd revlm_dc
-conda activate derm_django_env
 python manage.py showmigrations   # check for unapplied migrations (no [X])
 python manage.py migrate          # apply them to PostgreSQL
 ```

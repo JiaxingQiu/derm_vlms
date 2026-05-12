@@ -6,8 +6,16 @@ For every row in each input CSV, this script:
   2. Loads the corresponding image.
   3. Asks Qwen3-VL-8B to locate the image region for each sentence.
   4. Saves a new CSV  <modelname>_predictions_reason_viz.csv  with all
-     original columns plus a `viz_grounding` column (JSON list of
-     {sentence, diagnosis, box} dicts).
+     original columns plus grounding columns.
+
+Grounding columns:
+  - viz_grounding              : boxes from the row's own image
+  - viz_grounding_dscope       : (combined rows only) boxes from dscope image
+  - viz_grounding_clinical     : (combined rows only) boxes from clinical photo
+
+Resume logic: a row is "done" when all expected grounding columns are populated.
+Combined rows missing dscope/clinical columns are treated as partially done and
+only the missing groundings are computed.
 
 Usage:
     python run_viz_ground.py                        # process all CSVs
@@ -62,14 +70,43 @@ def find_input_csvs(results_dir: str, filter_model: str | None = None) -> list[t
 
 def resolve_image_path(raw_path: str, images_dir: str) -> str | None:
     """Try to locate the image file, return path or None."""
-    if raw_path and raw_path != "None" and os.path.isfile(raw_path):
+    if not raw_path or raw_path == "None":
+        return None
+    if os.path.isfile(raw_path):
         return raw_path
-    if raw_path and raw_path != "None":
-        fname = os.path.basename(raw_path)
-        candidate = os.path.join(images_dir, fname)
-        if os.path.isfile(candidate):
-            return candidate
+    fname = os.path.basename(raw_path)
+    candidate = os.path.join(images_dir, fname)
+    if os.path.isfile(candidate):
+        return candidate
     return None
+
+
+def _variant_image_path(combined_path: str, variant: str) -> str:
+    """Derive dscope or clinical path from a combined image path."""
+    if variant == "dscope":
+        return combined_path.replace("_combined.", "_dscope.")
+    elif variant == "clinical":
+        return combined_path.replace("_combined.", "_photo.")
+    return combined_path
+
+
+def _is_row_done(row: pd.Series) -> bool:
+    """Check if a row has all expected grounding columns populated."""
+    if pd.isna(row.get("viz_grounding")) or row.get("viz_grounding") == "":
+        return False
+    if row.get("image_mode") == "combined":
+        if pd.isna(row.get("viz_grounding_dscope")) or row.get("viz_grounding_dscope") == "":
+            return False
+        if pd.isna(row.get("viz_grounding_clinical")) or row.get("viz_grounding_clinical") == "":
+            return False
+    return True
+
+
+def _ground_on_image(model, processor, img_path: str, reason_text: str) -> str:
+    """Run grounding on a single image, return JSON string."""
+    image = Image.open(img_path).convert("RGB")
+    results = ground_reasoning_sentences(model, processor, image, reason_text)
+    return grounding_results_to_json(results)
 
 
 def process_csv(model_name: str, csv_path: str, model, processor,
@@ -86,62 +123,122 @@ def process_csv(model_name: str, csv_path: str, model, processor,
     print(f"Input:  {csv_path}  ({len(df)} rows)")
     print(f"Output: {out_path}")
 
-    # Resume support
-    done_ids: set = set()
+    # Load existing results for resume
     if os.path.exists(out_path):
-        done_df = pd.read_csv(out_path)
-        done_ids = set(done_df["id"].tolist())
-        print(f"Resuming — {len(done_ids)} rows already done")
+        out_df = pd.read_csv(out_path)
+        # Ensure grounding columns exist
+        for col in ("viz_grounding", "viz_grounding_dscope", "viz_grounding_clinical"):
+            if col not in out_df.columns:
+                out_df[col] = ""
+        print(f"Loaded existing output: {len(out_df)} rows")
+    else:
+        out_df = pd.DataFrame()
 
-    pending = df[~df["id"].isin(done_ids)]
+    # Build lookup of existing results by id
+    done_map: dict[str, dict] = {}
+    if not out_df.empty:
+        for _, r in out_df.iterrows():
+            done_map[r["id"]] = r.to_dict()
+
+    # Determine which rows still need work
+    pending_rows = []
+    for _, row in df.iterrows():
+        row_id = row["id"]
+        existing = done_map.get(row_id)
+        if existing and _is_row_done(pd.Series(existing)):
+            continue
+        pending_rows.append((row, existing))
+
     if limit:
-        pending = pending.head(limit)
-    print(f"Processing {len(pending)} rows")
+        pending_rows = pending_rows[:limit]
 
-    if pending.empty:
+    n_combined = sum(1 for row, _ in pending_rows if row.get("image_mode") == "combined")
+    print(f"Pending: {len(pending_rows)} rows ({n_combined} combined, "
+          f"{len(pending_rows) - n_combined} non-combined)")
+
+    if not pending_rows:
         print("Nothing to do.")
         return
 
-    batch: list[dict] = []
+    updates: list[dict] = []
 
-    for _, row in tqdm(pending.iterrows(), total=len(pending), desc=model_name):
-        img_path = resolve_image_path(str(row.get("image_path", "")), images_dir)
+    for row, existing in tqdm(pending_rows, desc=model_name):
+        row_id = row["id"]
         reason_text = str(row.get("reason_classify", ""))
+        is_combined = row.get("image_mode") == "combined"
 
-        if not img_path:
-            viz_json = "[]"
+        # Start from existing data or fresh row
+        out_row = existing.copy() if existing else row.to_dict()
+
+        # --- viz_grounding (own image) ---
+        needs_main = pd.isna(out_row.get("viz_grounding")) or out_row.get("viz_grounding") in ("", None)
+        if needs_main:
+            img_path = resolve_image_path(str(row.get("image_path", "")), images_dir)
+            if not img_path:
+                out_row["viz_grounding"] = "[]"
+            else:
+                try:
+                    out_row["viz_grounding"] = _ground_on_image(model, processor, img_path, reason_text)
+                except Exception as e:
+                    print(f"[ERR] {row_id} (main): {e}")
+                    out_row["viz_grounding"] = json.dumps([{"error": str(e)}])
+
+        # --- viz_grounding_dscope and viz_grounding_clinical (combined only) ---
+        if is_combined:
+            combined_img_path = resolve_image_path(str(row.get("image_path", "")), images_dir)
+
+            for variant, col in [("dscope", "viz_grounding_dscope"), ("clinical", "viz_grounding_clinical")]:
+                needs_variant = pd.isna(out_row.get(col)) or out_row.get(col) in ("", None)
+                if not needs_variant:
+                    continue
+                if not combined_img_path:
+                    out_row[col] = "[]"
+                else:
+                    variant_path = _variant_image_path(combined_img_path, variant)
+                    if not os.path.isfile(variant_path):
+                        out_row[col] = "[]"
+                    else:
+                        try:
+                            out_row[col] = _ground_on_image(model, processor, variant_path, reason_text)
+                        except Exception as e:
+                            print(f"[ERR] {row_id} ({variant}): {e}")
+                            out_row[col] = json.dumps([{"error": str(e)}])
         else:
-            try:
-                image = Image.open(img_path).convert("RGB")
-                results = ground_reasoning_sentences(model, processor, image, reason_text)
-                viz_json = grounding_results_to_json(results)
-            except Exception as e:
-                print(f"[ERR] {row['id']}: {e}")
-                viz_json = json.dumps([{"error": str(e)}])
+            out_row.setdefault("viz_grounding_dscope", "")
+            out_row.setdefault("viz_grounding_clinical", "")
 
-        out_row = row.to_dict()
-        out_row["viz_grounding"] = viz_json
-        batch.append(out_row)
+        done_map[row_id] = out_row
+        updates.append(out_row)
 
-        if len(batch) >= CHECKPOINT_EVERY:
-            _checkpoint(batch, out_path)
-            batch = []
+        if len(updates) >= CHECKPOINT_EVERY:
+            _write_full(done_map, df, out_path)
+            updates = []
             gc.collect()
             torch.cuda.empty_cache()
 
-    if batch:
-        _checkpoint(batch, out_path, final=True)
+    if updates:
+        _write_full(done_map, df, out_path)
 
     result_df = pd.read_csv(out_path)
     print(f"Done. {len(result_df)} total rows written to {out_path}")
 
 
-def _checkpoint(batch: list[dict], out_path: str, final: bool = False):
-    batch_df = pd.DataFrame(batch)
-    header = not os.path.exists(out_path)
-    batch_df.to_csv(out_path, mode="a", header=header, index=False)
-    tag = "Final" if final else "Checkpoint"
-    print(f"[{tag}] +{len(batch)} rows")
+def _write_full(done_map: dict[str, dict], input_df: pd.DataFrame, out_path: str):
+    """Write all completed rows to disk, preserving input row order."""
+    rows = []
+    for _, row in input_df.iterrows():
+        row_id = row["id"]
+        if row_id in done_map:
+            rows.append(done_map[row_id])
+    if rows:
+        out_df = pd.DataFrame(rows)
+        col_order = [c for c in input_df.columns if c in out_df.columns]
+        for extra in ("viz_grounding", "viz_grounding_dscope", "viz_grounding_clinical"):
+            if extra not in col_order and extra in out_df.columns:
+                col_order.append(extra)
+        out_df = out_df[col_order]
+        out_df.to_csv(out_path, index=False)
+        print(f"[Checkpoint] {len(out_df)} rows written")
 
 
 def main():

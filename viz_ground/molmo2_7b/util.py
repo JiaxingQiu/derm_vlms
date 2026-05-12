@@ -20,6 +20,23 @@ import torch
 from PIL import Image
 from transformers import AutoModelForImageTextToText, AutoProcessor
 
+# Molmo2 remote code expects "default" in ROPE_INIT_FUNCTIONS.
+# Patch it in if missing (standard RoPE without scaling).
+try:
+    from transformers.modeling_rope_utils import ROPE_INIT_FUNCTIONS
+    if "default" not in ROPE_INIT_FUNCTIONS:
+        def _compute_default_rope_parameters(config, device=None, seq_len=None, **kwargs):
+            import math
+            base = config.rope_theta
+            dim = int(config.hidden_size // config.num_attention_heads)
+            if hasattr(config, "partial_rotary_factor"):
+                dim = int(dim * config.partial_rotary_factor)
+            inv_freq = 1.0 / (base ** (torch.arange(0, dim, 2, dtype=torch.float32, device=device) / dim))
+            return inv_freq, 1.0
+        ROPE_INIT_FUNCTIONS["default"] = _compute_default_rope_parameters
+except (ImportError, AttributeError):
+    pass
+
 # Re-use the exact parsing logic the Django interface uses so that the
 # sentences we ground are identical to what the annotators see.
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

@@ -8,26 +8,31 @@
 {% block header_prompt %}Prompt to AI: You are an expert dermatologist. Please give the top 3 diagnoses in your differential, and provide reasoning for each diagnosis{% endblock %}
 
 {% block right_panel %}
-<div class="task-sec">
-    <div class="vlm-badge" id="vlm-badge">
-        <span class="vlm-tag">Model</span> {{ model_display_name }}
-    </div>
-    <div class="tc">
-        <div class="crop-hint">Use Crop &#x2702; to select a region as evidence for any part of your feedback</div>
+<div id="review-content" style="position:relative">
+    <div id="benign-overlay"></div>
 
-        <div class="field" id="diag-section">
-            <div class="field-label">AI Diagnoses</div>
-            <div class="diag-list" id="diag-list"></div>
+    <div class="task-sec">
+        <div class="vlm-badge" id="vlm-badge">
+            <span class="vlm-tag">Model</span> {{ model_display_name }}
+            <button type="button" id="benign-btn" class="benign-toggle">This lesion is benign.</button>
+        </div>
+        <div class="tc">
+            <div class="crop-hint">Use Crop &#x2702; to select a region as evidence for any part of your feedback</div>
+
+            <div class="field" id="diag-section">
+                <div class="field-label">AI Diagnoses</div>
+                <div class="diag-list" id="diag-list"></div>
+            </div>
         </div>
     </div>
-</div>
 
-<div class="task-sec">
-    <div class="tc">
-        <div class="field-label">Other feedback <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#9ca3af">(optional)</span></div>
-        <div class="survey" id="survey">
-            <textarea id="other-feedback" rows="4" placeholder="Other feedback (e.g., additional details?)"></textarea>
-            <div class="field-evidence" id="other-feedback-ev"></div>
+    <div class="task-sec">
+        <div class="tc">
+            <div class="field-label">Other feedback <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#9ca3af">(optional)</span></div>
+            <div class="survey" id="survey">
+                <textarea id="other-feedback" rows="4" placeholder="Other feedback (e.g., additional details?)"></textarea>
+                <div class="field-evidence" id="other-feedback-ev"></div>
+            </div>
         </div>
     </div>
 </div>
@@ -92,6 +97,14 @@
 .survey textarea{width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:.9rem;font-family:inherit;resize:vertical;min-height:60px;line-height:1.5}
 .survey textarea:focus{outline:none;border-color:#2563eb;box-shadow:0 0 0 2px rgba(37,99,235,.15)}
 .sortable-ghost .diag-card{opacity:.4;border:2px dashed #94a3b8}
+
+#vlm-badge{display:flex;align-items:center}
+.benign-toggle{position:relative;z-index:51;margin-left:auto;padding:4px 12px;border:1px solid #c7d2fe;border-radius:5px;background:#fff;cursor:pointer;font-size:.9rem;font-weight:400;color:#1f2937;transition:all .15s;user-select:none;white-space:nowrap;flex-shrink:0}
+.benign-toggle:hover{border-color:#a5b4fc;background:#eef2ff}
+.benign-toggle.active{border-color:#4338ca;background:#eef2ff;color:#4338ca}
+
+#benign-overlay{display:none;position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(243,244,246,.75);z-index:50;border-radius:8px;cursor:not-allowed}
+#review-content.benign-blocked #benign-overlay{display:block}
 {% endblock %}
 
 {% block interface_js %}
@@ -208,8 +221,29 @@
     var state = {
         diagnosis_feedback: buildDiagnosisState(aiDiagnoses, savedReview.diagnosis_feedback || []),
         other_feedback: savedReview.other_feedback || '',
-        other_feedback_crops: Array.isArray(savedReview.other_feedback_crops) ? savedReview.other_feedback_crops : []
+        other_feedback_crops: Array.isArray(savedReview.other_feedback_crops) ? savedReview.other_feedback_crops : [],
+        benign: !!savedReview.benign
     };
+
+    // --- Benign toggle ---
+    var benignBtn = document.getElementById('benign-btn');
+    var reviewContent = document.getElementById('review-content');
+    function _syncBenignUI() {
+        if (state.benign) {
+            benignBtn.classList.add('active');
+            reviewContent.classList.add('benign-blocked');
+            deactivateBoxEditor();
+        } else {
+            benignBtn.classList.remove('active');
+            reviewContent.classList.remove('benign-blocked');
+        }
+    }
+    benignBtn.addEventListener('click', function () {
+        state.benign = !state.benign;
+        _syncBenignUI();
+        syncHiddenPayload();
+    });
+    _syncBenignUI();
 
     // --- Field target routing (for crop/evidence system) ---
     getFieldTarget = function (fieldEl) {
@@ -277,7 +311,8 @@
             }),
             diagnosis_order: state.diagnosis_order || [],
             other_feedback: state.other_feedback,
-            other_feedback_crops: state.other_feedback_crops || []
+            other_feedback_crops: state.other_feedback_crops || [],
+            benign: !!state.benign
         };
         reviewDataInputEl.value = JSON.stringify(payload);
     };

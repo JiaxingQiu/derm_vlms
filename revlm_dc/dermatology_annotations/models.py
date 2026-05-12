@@ -98,6 +98,8 @@ class Annotation(models.Model):
     # [2, 0, 1] = user moved AI's #3 to rank 1, AI's #1 to rank 2, AI's #2 to rank 3.
     diagnosis_order = models.JSONField(default=list, blank=True)
 
+    benign = models.BooleanField(default=False)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

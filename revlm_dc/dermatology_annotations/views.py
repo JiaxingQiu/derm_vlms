@@ -362,6 +362,9 @@ def update_annotation_conditional(annotation, payload, model_key, case_data):
     if isinstance(raw_order, list) and all(isinstance(x, int) for x in raw_order):
         annotation.diagnosis_order = raw_order
 
+    if "benign" in payload:
+        annotation.benign = bool(payload["benign"])
+
 
 # ---------------------------------------------------------------------------
 # Page sequence / completion
@@ -694,6 +697,7 @@ def annotations_view(request):
         "diagnosis_order": annotation.diagnosis_order or [],
         "other_feedback": of.get("text", ""),
         "other_feedback_crops": of.get("crops", []),
+        "benign": annotation.benign,
     }
 
     all_model_keys = get_model_keys(current_case_data, current_case_id)

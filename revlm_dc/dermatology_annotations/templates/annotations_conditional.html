@@ -14,7 +14,7 @@
     <div class="task-sec">
         <div class="vlm-badge" id="vlm-badge">
             <span class="vlm-tag">Model</span> {{ model_display_name }}
-            <button type="button" id="benign-btn" class="benign-toggle">This lesion is benign.</button>
+            <button type="button" id="benign-btn" class="benign-toggle">This lesion looks benign.</button>
         </div>
         <div class="tc">
             <div class="crop-hint">Use Crop &#x2702; to select a region as evidence for any part of your feedback</div>
@@ -41,35 +41,31 @@
 {% block interface_css %}
 .diag-list{display:flex;flex-direction:column;gap:10px}
 .diag-row{display:flex;align-items:stretch;gap:0}
-.diag-rank{min-width:28px;display:flex;align-items:flex-start;justify-content:center;font-weight:700;color:#475569;font-size:.9rem;padding-top:10px}
-.diag-card{flex:1;border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc;overflow:visible;transition:background .15s;position:relative}
-.diag-card.diag-expanded{background:#fff7ed;border-color:#fb923c;border-style:dashed}
+.diag-rank{min-width:28px;display:flex;align-items:flex-start;justify-content:center;font-weight:700;color:#475569;font-size:.82rem;padding-top:10px}
+.diag-card{flex:1;border:1px solid #d1d5db;border-radius:8px;background:#fff;overflow:visible;transition:background .15s;position:relative}
 .diag-card.lbl-incorrect{border-color:#e2e8f0}
-.diag-head{display:flex;align-items:center;gap:8px;padding:8px 12px;cursor:pointer;user-select:none}
-.diag-head:hover{background:rgba(0,0,0,.03)}
+.diag-head{display:flex;align-items:center;gap:8px;padding:8px 12px;user-select:none;background:#f3f4f6;border-radius:8px 8px 0 0}
+.diag-head:hover{background:#e5e7eb}
 .diag-revert{padding:3px 10px;border-radius:5px;border:1px solid #fcd34d;background:#fffbeb;color:#b45309;font-size:.72rem;cursor:pointer;white-space:nowrap;transition:all .15s;flex-shrink:0;margin-left:auto}
 .diag-revert:hover{background:#fef3c7;border-color:#f59e0b}
 .drag-handle{cursor:grab;color:#9ca3af;font-size:1.1rem;padding:0 4px;user-select:none;line-height:1}
 .drag-handle:active{cursor:grabbing}
-.diag-toggle{color:#9ca3af;font-size:.7rem;cursor:pointer;user-select:none;transition:transform .15s;display:inline-block}
-.diag-card.diag-expanded .diag-toggle{transform:rotate(90deg)}
-.diag-name{flex:1;font-size:.9rem;font-weight:700;color:#1f2937;line-height:1.4}
+.diag-name{flex:1;font-size:.82rem;font-weight:700;color:#1f2937;line-height:1.4}
 
-.diag-expand{padding:0 12px 12px 12px;border-top:1px dashed #fb923c;background:#fff;display:none}
-.diag-card.diag-expanded .diag-expand{display:block}
-.diag-expand .sub-label{font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;color:#6b7280;font-weight:600;margin:10px 0 6px}
+.diag-expand{padding:0 12px 12px 12px;border-top:1px solid #d1d5db;background:#fff;display:block}
+.diag-expand .sub-label{font-size:.68rem;text-transform:uppercase;letter-spacing:.05em;color:#6b7280;font-weight:600;margin:10px 0 6px}
 .sub-label .req{color:#dc2626;font-weight:600;text-transform:none;letter-spacing:0;font-size:.68rem;margin-left:4px}
 
 .reason-list{display:flex;flex-direction:column;gap:6px}
-.reason-row{display:flex;align-items:flex-start;gap:8px;padding:6px 8px;border:1px solid #e5e7eb;border-radius:6px;background:#fafafa;transition:border-color .15s,box-shadow .15s;cursor:default}
-.reason-row:hover{background:#fff7ed}
-.reason-row.reason-editing{border-color:#f97316;box-shadow:0 0 0 1px rgba(249,115,22,.25);background:#fff}
+.reason-row{display:flex;align-items:flex-start;gap:8px;padding:6px 8px;border:1px solid #e5e7eb;border-radius:6px;background:#fff;transition:border-color .15s,box-shadow .15s;cursor:default}
+.reason-row:hover{background:#f9fafb}
+.reason-row.reason-editing{border-color:#6b7280;box-shadow:0 0 0 1px rgba(107,114,128,.25);background:#fff}
 .reason-num{color:#9ca3af;font-size:.75rem;font-weight:600;min-width:18px;padding-top:3px}
 .reason-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
-.reason-text{font-size:.9rem;color:#374151;line-height:1.45;word-wrap:break-word;font-weight:400;cursor:text}
+.reason-text{font-size:.86rem;color:#374151;line-height:1.45;word-wrap:break-word;font-weight:400;cursor:text}
 .reason-text del{color:#b91c1c;text-decoration:line-through;background:#fee2e2;padding:0 1px;border-radius:2px;text-decoration-thickness:1.5px}
 .reason-text ins{color:#047857;text-decoration:underline;background:#d1fae5;padding:0 1px;border-radius:2px;text-decoration-thickness:1.5px}
-.reason-textarea{width:100%;padding:4px 6px;border:none;font-size:.9rem;font-family:inherit;resize:vertical;min-height:44px;line-height:1.45;background:transparent;color:#1f2937}
+.reason-textarea{width:100%;padding:4px 6px;border:none;font-size:.86rem;font-family:inherit;resize:vertical;min-height:44px;line-height:1.45;background:transparent;color:#1f2937}
 .reason-textarea:focus{outline:none;border:none;box-shadow:none}
 .reason-ta-wrap{position:relative}
 .reason-del{position:absolute;top:-8px;right:-8px;width:20px;height:20px;border-radius:50%;border:1.5px solid #fff;background:#ef4444;color:#fff;font-size:.75rem;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;z-index:2;box-shadow:0 1px 3px rgba(0,0,0,.15)}
@@ -81,16 +77,15 @@
 .reason-btn.revert{color:#b45309;border-color:#fcd34d;background:#fffbeb}
 .reason-btn.revert:hover{background:#fef3c7;border-color:#f59e0b}
 
-.reason-add{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;margin-top:6px;border:1px dashed #d1d5db;border-radius:6px;background:transparent;cursor:pointer;font-size:.78rem;color:#6b7280;transition:all .15s}
+.reason-add{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;margin-top:6px;border:1px dashed #d1d5db;border-radius:6px;background:transparent;cursor:pointer;font-size:.72rem;color:#6b7280;transition:all .15s}
 .reason-add:hover{background:#f9fafb;border-color:#9ca3af;color:#374151}
 
-.diag-card-del{position:absolute;top:-8px;right:-8px;width:22px;height:22px;border-radius:50%;border:1.5px solid #fff;background:#ef4444;color:#fff;font-size:.8rem;cursor:pointer;display:none;align-items:center;justify-content:center;line-height:1;z-index:3;box-shadow:0 1px 3px rgba(0,0,0,.15)}
-.diag-card-del:hover{background:#dc2626}
-.diag-card.diag-expanded .diag-card-del{display:flex}
+.diag-card-del{padding:3px 10px;border-radius:5px;border:1px solid #fca5a5;background:#fef2f2;color:#b91c1c;font-size:.72rem;font-weight:600;cursor:pointer;white-space:nowrap;transition:all .15s;flex-shrink:0}
+.diag-card-del:hover{background:#fee2e2;border-color:#f87171;color:#991b1b}
 
 .diag-replacement{padding:12px;display:flex;flex-direction:column;gap:10px}
-.diag-replacement textarea{width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:.9rem;font-family:inherit;resize:vertical;line-height:1.5;background:#fff;color:#1f2937}
-.diag-replacement textarea:focus{outline:none;border-color:#fb923c;box-shadow:0 0 0 2px rgba(251,146,60,.15)}
+.diag-replacement textarea{width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:.82rem;font-family:inherit;resize:vertical;line-height:1.5;background:#fff;color:#1f2937}
+.diag-replacement textarea:focus{outline:none;border-color:#6b7280;box-shadow:0 0 0 2px rgba(107,114,128,.15)}
 .diag-replacement textarea::placeholder{color:#9ca3af}
 
 .survey{display:flex;flex-direction:column;gap:10px}
@@ -99,9 +94,9 @@
 .sortable-ghost .diag-card{opacity:.4;border:2px dashed #94a3b8}
 
 #vlm-badge{display:flex;align-items:center}
-.benign-toggle{position:relative;z-index:51;margin-left:auto;padding:4px 12px;border:1px solid #c7d2fe;border-radius:5px;background:#fff;cursor:pointer;font-size:.9rem;font-weight:400;color:#1f2937;transition:all .15s;user-select:none;white-space:nowrap;flex-shrink:0}
-.benign-toggle:hover{border-color:#a5b4fc;background:#eef2ff}
-.benign-toggle.active{border-color:#4338ca;background:#eef2ff;color:#4338ca}
+.benign-toggle{position:relative;z-index:51;margin-left:auto;padding:4px 12px;border:1px solid #86efac;border-radius:5px;background:#f0fdf4;cursor:pointer;font-size:.9rem;font-weight:400;color:#166534;transition:all .15s;user-select:none;white-space:nowrap;flex-shrink:0}
+.benign-toggle:hover{border-color:#4ade80;background:#dcfce7}
+.benign-toggle.active{border-color:#16a34a;background:#dcfce7;color:#14532d;font-weight:600}
 
 #benign-overlay{display:none;position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(243,244,246,.75);z-index:50;border-radius:8px;cursor:not-allowed}
 #review-content.benign-blocked #benign-overlay{display:block}
@@ -147,44 +142,55 @@
             var replacementReason = isReplaced ? (savedEdits[0].edited || '') : '';
             var aiSentenceEdits = isReplaced ? savedEdits.slice(1) : savedEdits;
             var aiGroundingBoxes = Array.isArray(aiD.reasoning_grounding_boxes) ? aiD.reasoning_grounding_boxes : [];
+            var aiClinicalBoxes = Array.isArray(aiD.reasoning_grounding_boxes_clinical) ? aiD.reasoning_grounding_boxes_clinical : [];
+            var aiDscopeBoxes = Array.isArray(aiD.reasoning_grounding_boxes_dscope) ? aiD.reasoning_grounding_boxes_dscope : [];
+            var hasSeparateBoxes = aiClinicalBoxes.some(function (b) { return !!b; }) || aiDscopeBoxes.some(function (b) { return !!b; });
             var reasoningEdits = sentences.map(function (original, sIdx) {
                 var savedEdit = aiSentenceEdits[sIdx] || {};
                 var savedCrops = Array.isArray(savedEdit.crops) ? savedEdit.crops : [];
-                var gbox;
-                if ('ev0_edited' in savedEdit) {
-                    gbox = savedEdit.ev0_edited;
-                } else if ('grounding_box' in savedEdit) {
-                    gbox = savedEdit.grounding_box;
-                } else if (aiGroundingBoxes[sIdx]) {
-                    gbox = aiGroundingBoxes[sIdx];
+
+                var clinBox, dscopeBox;
+                if ('ev0_clinical' in savedEdit) {
+                    clinBox = savedEdit.ev0_clinical;
+                } else if (hasSeparateBoxes && aiClinicalBoxes[sIdx]) {
+                    clinBox = aiClinicalBoxes[sIdx];
+                } else if (!hasSeparateBoxes && aiGroundingBoxes[sIdx]) {
+                    clinBox = aiGroundingBoxes[sIdx];
                 } else {
-                    gbox = {
-                        x: Math.random() * 0.9,
-                        y: Math.random() * 0.75,
-                        w: 0.1,
-                        h: 0.25
-                    };
+                    clinBox = null;
                 }
-                var boxes = [gbox].concat(savedCrops);
-                var origBox = gbox ? { x: gbox.x, y: gbox.y, w: gbox.w, h: gbox.h } : null;
-                var _raw = aiGroundingBoxes[sIdx];
-                var aiBox;
-                if (_raw) {
-                    aiBox = { x: _raw.x, y: _raw.y, w: _raw.w, h: _raw.h };
-                } else if (savedEdit.ev0_original && typeof savedEdit.ev0_original === 'object') {
-                    aiBox = { x: savedEdit.ev0_original.x, y: savedEdit.ev0_original.y,
-                              w: savedEdit.ev0_original.w, h: savedEdit.ev0_original.h };
-                } else if (gbox) {
-                    aiBox = { x: gbox.x, y: gbox.y, w: gbox.w, h: gbox.h };
+
+                if ('ev0_dscope' in savedEdit) {
+                    dscopeBox = savedEdit.ev0_dscope;
+                } else if (hasSeparateBoxes && aiDscopeBoxes[sIdx]) {
+                    dscopeBox = aiDscopeBoxes[sIdx];
                 } else {
-                    aiBox = null;
+                    dscopeBox = null;
                 }
+
+                var boxes = [clinBox, dscopeBox].concat(savedCrops);
+
+                var aiClin = aiClinicalBoxes[sIdx] || (hasSeparateBoxes ? null : aiGroundingBoxes[sIdx]);
+                var aiDsc = aiDscopeBoxes[sIdx] || null;
+
+                var _aiClinBox = null, _aiDscBox = null;
+                if (aiClin) {
+                    _aiClinBox = { x: aiClin.x, y: aiClin.y, w: aiClin.w, h: aiClin.h };
+                } else if (savedEdit.ev0_clinical_original && typeof savedEdit.ev0_clinical_original === 'object') {
+                    _aiClinBox = savedEdit.ev0_clinical_original;
+                }
+                if (aiDsc) {
+                    _aiDscBox = { x: aiDsc.x, y: aiDsc.y, w: aiDsc.w, h: aiDsc.h };
+                } else if (savedEdit.ev0_dscope_original && typeof savedEdit.ev0_dscope_original === 'object') {
+                    _aiDscBox = savedEdit.ev0_dscope_original;
+                }
+
                 return {
                     original: String(original || ''),
                     edited: typeof savedEdit.edited === 'string' ? savedEdit.edited : String(original || ''),
                     boxes: boxes,
-                    _origBox: origBox,
-                    _aiGroundingBox: aiBox,
+                    _aiClinBox: _aiClinBox,
+                    _aiDscBox: _aiDscBox,
                     _ev0Moved: !!savedEdit._ev0_moved,
                     editorOpen: false
                 };
@@ -196,8 +202,9 @@
                     reasoningEdits.push({
                         original: 'added',
                         edited: addedEdit.edited || '',
-                        boxes: [null],
-                        _origBox: null,
+                        boxes: [null, null],
+                        _aiClinBox: null,
+                        _aiDscBox: null,
                         _ev0Moved: false,
                         editorOpen: false
                     });
@@ -208,7 +215,6 @@
                 name: String(aiD.name || ''),
                 originalName: String(aiD.name || ''),
                 label: (savedD.label === 'correct' || savedD.label === 'incorrect') ? savedD.label : '',
-                expanded: false,
                 reasoning_edits: reasoningEdits,
                 deleted: isReplaced,
                 replacement_name: isReplaced ? String(savedD.correct_differential || '') : '',
@@ -264,8 +270,8 @@
             if (!Number.isInteger(sIdx) || !diag.reasoning_edits[sIdx]) return null;
             var edit = diag.reasoning_edits[sIdx];
             return {
-                getCrops: function () { return edit.boxes.slice(1); },
-                setCrops: function (c) { edit.boxes = [edit.boxes[0]].concat(c); },
+                getCrops: function () { return edit.boxes.slice(2); },
+                setCrops: function (c) { edit.boxes = [edit.boxes[0], edit.boxes[1]].concat(c); },
                 updateText: function (v) { edit.edited = v; }
             };
         }
@@ -289,9 +295,11 @@
                     return {
                         original: e.original,
                         edited: e.edited,
-                        ev0_original: e._aiGroundingBox || null,
-                        ev0_edited: e.boxes[0] || null,
-                        crops: e.boxes.slice(1).filter(function (b) { return !!b; }),
+                        ev0_clinical_original: e._aiClinBox || null,
+                        ev0_dscope_original: e._aiDscBox || null,
+                        ev0_clinical: e.boxes[0] || null,
+                        ev0_dscope: e.boxes[1] || null,
+                        crops: e.boxes.slice(2).filter(function (b) { return !!b; }),
                         _ev0_moved: !!e._ev0Moved
                     };
                 });
@@ -407,11 +415,15 @@
     }
 
     // --- Helper: build labels array for edit.boxes ---
+    // boxes[0] = clinical, boxes[1] = dscope, boxes[2..] = user crops
     function _boxLabels(edit) {
         var clean = edit.edited.replace(/\[ev\s+\d+\]\s?/g, '');
         var truncated = clean.length > 50 ? clean.substring(0, 47) + '...' : clean;
-        var labels = [edit.boxes[0] ? truncated : ''];
-        for (var i = 1; i < edit.boxes.length; i++) labels.push('ev ' + i);
+        var labels = [
+            edit.boxes[0] ? truncated : '',
+            edit.boxes[1] ? truncated : ''
+        ];
+        for (var i = 2; i < edit.boxes.length; i++) labels.push('ev ' + (i - 1));
         return labels;
     }
 
@@ -420,9 +432,15 @@
         for (var i = 0; i < diag.reasoning_edits.length; i++) {
             var e = diag.reasoning_edits[i];
             if (e.edited !== e.original) return true;
-            if (e._ev0Moved || e.boxes[0] === null || e.boxes.length > 1) return true;
-            if (e.boxes[0] && e._origBox) {
-                var b = e.boxes[0], o = e._origBox;
+            if (e._ev0Moved || e.boxes.length > 2) return true;
+            if (!e.boxes[0] && e._aiClinBox) return true;
+            if (!e.boxes[1] && e._aiDscBox) return true;
+            if (e.boxes[0] && e._aiClinBox) {
+                var b = e.boxes[0], o = e._aiClinBox;
+                if (b.x !== o.x || b.y !== o.y || b.w !== o.w || b.h !== o.h) return true;
+            }
+            if (e.boxes[1] && e._aiDscBox) {
+                var b = e.boxes[1], o = e._aiDscBox;
                 if (b.x !== o.x || b.y !== o.y || b.w !== o.w || b.h !== o.h) return true;
             }
         }
@@ -437,13 +455,15 @@
         diag.name = diag.originalName;
         diag.reasoning_edits.forEach(function (e) {
             e.edited = e.original;
-            var newBox = e._aiGroundingBox
-                ? { x: e._aiGroundingBox.x, y: e._aiGroundingBox.y,
-                    w: e._aiGroundingBox.w, h: e._aiGroundingBox.h }
-                : { x: Math.random() * 0.9, y: Math.random() * 0.75,
-                    w: 0.1, h: 0.25 };
-            e.boxes = [newBox];
-            e._origBox = { x: newBox.x, y: newBox.y, w: newBox.w, h: newBox.h };
+            var clinBox = e._aiClinBox
+                ? { x: e._aiClinBox.x, y: e._aiClinBox.y,
+                    w: e._aiClinBox.w, h: e._aiClinBox.h }
+                : null;
+            var dscBox = e._aiDscBox
+                ? { x: e._aiDscBox.x, y: e._aiDscBox.y,
+                    w: e._aiDscBox.w, h: e._aiDscBox.h }
+                : null;
+            e.boxes = [clinBox, dscBox];
             e._ev0Moved = false;
             e.editorOpen = false;
         });
@@ -488,18 +508,29 @@
         var row = document.createElement('div');
         row.className = 'reason-row' + (edit.editorOpen ? ' reason-editing' : '');
         var wasEdited = edit.edited !== edit.original;
-        var boxesModified = edit._ev0Moved || edit.boxes[0] === null || edit.boxes.length > 1;
-        if (!boxesModified && edit.boxes[0] && edit._origBox) {
-            var b = edit.boxes[0], o = edit._origBox;
-            if (b.x !== o.x || b.y !== o.y || b.w !== o.w || b.h !== o.h) boxesModified = true;
+        var boxesModified = edit._ev0Moved || edit.boxes.length > 2;
+        if (!boxesModified) {
+            if (edit.boxes[0] && edit._aiClinBox) {
+                var b = edit.boxes[0], o = edit._aiClinBox;
+                if (b.x !== o.x || b.y !== o.y || b.w !== o.w || b.h !== o.h) boxesModified = true;
+            }
+            if (edit.boxes[1] && edit._aiDscBox) {
+                var b = edit.boxes[1], o = edit._aiDscBox;
+                if (b.x !== o.x || b.y !== o.y || b.w !== o.w || b.h !== o.h) boxesModified = true;
+            }
         }
         var hasChanges = wasEdited || boxesModified;
+        var sentColor = SENTENCE_COLORS[sIdx % SENTENCE_COLORS.length];
 
         row.addEventListener('mouseenter', function () {
             var items = [];
-            edit.boxes.forEach(function (box, i) {
-                if (box) items.push({ box: box, label: _boxLabels(edit)[i] });
-            });
+            var clean = edit.edited.replace(/\[ev\s+\d+\]\s?/g, '');
+            var truncated = clean.length > 50 ? clean.substring(0, 47) + '...' : clean;
+            if (edit.boxes[0]) items.push({ box: edit.boxes[0], label: truncated, color: sentColor, dashed: false });
+            if (edit.boxes[1]) items.push({ box: edit.boxes[1], label: truncated, color: sentColor, dashed: true });
+            for (var i = 2; i < edit.boxes.length; i++) {
+                if (edit.boxes[i]) items.push({ box: edit.boxes[i], label: 'ev ' + (i - 1) });
+            }
             if (items.length) showGroundingBoxes(items);
         });
         row.addEventListener('mouseleave', function () {
@@ -545,6 +576,7 @@
             delSent.onclick = function () {
                 edit.edited = '';
                 edit.boxes[0] = null;
+                edit.boxes[1] = null;
                 edit.editorOpen = false;
                 deactivateBoxEditor();
                 syncHiddenPayload();
@@ -562,12 +594,14 @@
                 var editorBoxes = [];
                 var editorLabels = [];
                 var editorIdxMap = [];
+                var editorColors = [];
                 var allLabels = _boxLabels(edit);
                 edit.boxes.forEach(function (box, i) {
                     if (box) {
                         editorBoxes.push(box);
                         editorLabels.push(allLabels[i]);
                         editorIdxMap.push(i);
+                        editorColors.push(i < 2 ? sentColor : null);
                     }
                 });
                 activateBoxEditor(
@@ -576,19 +610,19 @@
                     function onBoxChange(visIdx, updatedBox) {
                         var realIdx = editorIdxMap[visIdx];
                         edit.boxes[realIdx] = updatedBox;
-                        if (realIdx === 0) edit._ev0Moved = true;
+                        if (realIdx <= 1) edit._ev0Moved = true;
                         syncHiddenPayload();
                     },
                     function onBoxDelete(visIdx) {
                         var realIdx = editorIdxMap[visIdx];
-                        if (realIdx === 0) {
-                            edit.boxes[0] = null;
+                        if (realIdx <= 1) {
+                            edit.boxes[realIdx] = null;
                         } else {
                             edit.boxes.splice(realIdx, 1);
-                            var oldN = realIdx;
+                            var oldN = realIdx - 1;
                             var text = ta.value;
                             text = text.replace(new RegExp('\\[ev\\s+' + oldN + '\\]\\s?', 'g'), '');
-                            for (var n = oldN + 1; n <= edit.boxes.length; n++)
+                            for (var n = oldN + 1; n <= edit.boxes.length - 1; n++)
                                 text = text.replace(new RegExp('\\[ev\\s+' + n + '\\]', 'g'), '[ev ' + (n - 1) + ']');
                             ta.value = text;
                             edit.edited = text;
@@ -597,7 +631,8 @@
                         deactivateBoxEditor();
                         edit.editorOpen = true;
                         render();
-                    }
+                    },
+                    editorColors
                 );
 
                 function _cursorSelectBox() {
@@ -607,7 +642,8 @@
                     while ((m = re.exec(text)) !== null) {
                         if (pos >= m.index && pos <= m.index + m[0].length) {
                             var evN = parseInt(m[1], 10);
-                            var visIdx = editorIdxMap.indexOf(evN);
+                            var realIdx = evN + 1;
+                            var visIdx = editorIdxMap.indexOf(realIdx);
                             if (visIdx >= 0) _selectBox(visIdx);
                             return;
                         }
@@ -646,13 +682,15 @@
             btnRevert.onclick = function () {
                 deactivateBoxEditor();
                 edit.edited = edit.original;
-                var newBox = edit._aiGroundingBox
-                    ? { x: edit._aiGroundingBox.x, y: edit._aiGroundingBox.y,
-                        w: edit._aiGroundingBox.w, h: edit._aiGroundingBox.h }
-                    : { x: Math.random() * 0.9, y: Math.random() * 0.75,
-                        w: 0.1, h: 0.25 };
-                edit.boxes = [newBox];
-                edit._origBox = { x: newBox.x, y: newBox.y, w: newBox.w, h: newBox.h };
+                var clinBox = edit._aiClinBox
+                    ? { x: edit._aiClinBox.x, y: edit._aiClinBox.y,
+                        w: edit._aiClinBox.w, h: edit._aiClinBox.h }
+                    : null;
+                var dscBox = edit._aiDscBox
+                    ? { x: edit._aiDscBox.x, y: edit._aiDscBox.y,
+                        w: edit._aiDscBox.w, h: edit._aiDscBox.h }
+                    : null;
+                edit.boxes = [clinBox, dscBox];
                 edit._ev0Moved = false;
                 edit.editorOpen = false;
                 syncHiddenPayload();
@@ -668,25 +706,23 @@
 
     function renderDiagnosisCard(diag, dIdx) {
         var card = document.createElement('div');
-        card.className = 'diag-card' + (diag.expanded ? ' diag-expanded' : '');
+        card.className = 'diag-card diag-expanded';
         card.dataset.diagIndex = String(dIdx);
 
-        // --- Red × delete button (visible when expanded) ---
+        // --- Incorrect button (created here, appended into header below) ---
         var cardDel = document.createElement('div');
         cardDel.className = 'diag-card-del';
-        cardDel.innerHTML = '&times;';
-        cardDel.title = 'Remove this diagnosis';
+        cardDel.textContent = 'Incorrect';
+        cardDel.title = 'Mark this diagnosis as incorrect';
         cardDel.addEventListener('mousedown', function (e) { e.stopPropagation(); });
         cardDel.onclick = function (e) {
             e.stopPropagation();
             deactivateBoxEditor();
             diag.deleted = true;
-            diag.expanded = true;
             diag.replacement_crops = diag.replacement_crops || [];
             syncHiddenPayload();
             render();
         };
-        card.appendChild(cardDel);
 
         // --- If deleted, show replacement form ---
         if (diag.deleted) {
@@ -697,11 +733,6 @@
             handle.className = 'drag-handle';
             handle.innerHTML = '&#x2630;';
             head.appendChild(handle);
-
-            var toggle = document.createElement('span');
-            toggle.className = 'diag-toggle';
-            toggle.innerHTML = '&#x25B6;';
-            head.appendChild(toggle);
 
             var nameEl = document.createElement('span');
             nameEl.className = 'diag-name';
@@ -735,11 +766,6 @@
                 hideGroundingBoxes();
             });
 
-            head.addEventListener('click', function (e) {
-                if (e.target.closest('.drag-handle')) return;
-                diag.expanded = !diag.expanded;
-                render();
-            });
             card.appendChild(head);
 
             // Replacement form (shown when expanded)
@@ -764,7 +790,7 @@
 
             var reasonTa = document.createElement('textarea');
             reasonTa.rows = 3;
-            reasonTa.placeholder = 'Why? (please provide your reasoning and visual evidence.)';
+            reasonTa.placeholder = 'Please provide your reasoning and at least one visual evidence by cropping.';
             reasonTa.value = diag.replacement_reason;
             reasonTa.dataset.kind = 'replacement';
             reasonTa.dataset.diagIndex = String(dIdx);
@@ -822,8 +848,8 @@
                 origLabel.className = 'sub-label';
                 origLabel.style.padding = '0 12px';
                 origLabel.style.textTransform = 'none';
-                origLabel.style.fontSize = '.9rem';
-                origLabel.textContent = 'What is wrong in AI reasoning for its original diagnosis?';
+                origLabel.style.fontSize = '.78rem';
+                origLabel.textContent = 'What is wrong in AI reasoning for its original diagnosis "' + diag.originalName + '"?';
                 exp.appendChild(origLabel);
 
                 var origList = document.createElement('div');
@@ -852,11 +878,6 @@
         handle.innerHTML = '&#x2630;';
         head.appendChild(handle);
 
-        var toggle = document.createElement('span');
-        toggle.className = 'diag-toggle';
-        toggle.innerHTML = '&#x25B6;';
-        head.appendChild(toggle);
-
         var nameEl = document.createElement('span');
         nameEl.className = 'diag-name';
         nameEl.textContent = diag.name;
@@ -878,27 +899,24 @@
             head.appendChild(diagRevert);
         }
 
+        head.appendChild(cardDel);
+
         head.addEventListener('mouseenter', function () {
             var items = [];
             diag.reasoning_edits.forEach(function (edit, sIdx) {
-                edit.boxes.forEach(function (box, bIdx) {
-                    if (!box) return;
-                    var lbl = bIdx === 0
-                        ? (sIdx + 1) + '. ' + (edit.edited.replace(/\[ev\s+\d+\]\s?/g, '').substring(0, 47) || '')
-                        : (sIdx + 1) + '-ev' + bIdx;
-                    items.push({ box: box, label: lbl });
-                });
+                var color = SENTENCE_COLORS[sIdx % SENTENCE_COLORS.length];
+                var clean = edit.edited.replace(/\[ev\s+\d+\]\s?/g, '');
+                var truncated = clean.length > 50 ? clean.substring(0, 47) + '...' : clean;
+                if (edit.boxes[0]) items.push({ box: edit.boxes[0], label: truncated, color: color, dashed: false });
+                if (edit.boxes[1]) items.push({ box: edit.boxes[1], label: truncated, color: color, dashed: true });
+                for (var i = 2; i < edit.boxes.length; i++) {
+                    if (edit.boxes[i]) items.push({ box: edit.boxes[i], label: 'ev' + (i - 1) });
+                }
             });
             if (items.length) showGroundingBoxes(items);
         });
         head.addEventListener('mouseleave', function () {
             hideGroundingBoxes();
-        });
-
-        head.addEventListener('click', function (e) {
-            if (e.target.closest('.drag-handle')) return;
-            diag.expanded = !diag.expanded;
-            render();
         });
 
         card.appendChild(head);
@@ -929,8 +947,9 @@
             diag.reasoning_edits.push({
                 original: 'added',
                 edited: '',
-                boxes: [null],
-                _origBox: null,
+                boxes: [null, null],
+                _aiClinBox: null,
+                _aiDscBox: null,
                 _ev0Moved: false,
                 editorOpen: true
             });

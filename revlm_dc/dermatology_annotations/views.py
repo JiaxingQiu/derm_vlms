@@ -184,14 +184,13 @@ def normalize_reasoning_edits(edits, ai_sentences):
             "edited": str(edited if edited is not None else original),
             "crops": entry.get("crops") if isinstance(entry.get("crops"), list) else [],
         }
-        ev0_orig = entry.get("ev0_original")
-        if ev0_orig is not None and isinstance(ev0_orig, dict):
-            result["ev0_original"] = ev0_orig
-        gbox = entry.get("ev0_edited", entry.get("grounding_box"))
-        if gbox is not None and isinstance(gbox, dict):
-            result["ev0_edited"] = gbox
-        elif "ev0_edited" in entry or "grounding_box" in entry:
-            result["ev0_edited"] = None
+        for key in ("ev0_clinical", "ev0_dscope",
+                     "ev0_clinical_original", "ev0_dscope_original"):
+            val = entry.get(key)
+            if val is not None and isinstance(val, dict):
+                result[key] = val
+            elif key in entry:
+                result[key] = None
         if entry.get("_ev0_moved"):
             result["_ev0_moved"] = True
         out.append(result)

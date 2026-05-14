@@ -135,7 +135,7 @@ main{max-width:none;margin:0;padding:8px 12px}
 .gb-box-label{position:absolute;bottom:100%;left:0;background:#f97316;color:#fff;font-size:.68rem;font-weight:600;padding:1px 6px;border-radius:3px 3px 0 0;white-space:nowrap;max-width:280px;overflow:hidden;text-overflow:ellipsis;line-height:1.4;pointer-events:none}
 .gb-pool.gb-editing .gb-box{pointer-events:auto;cursor:pointer}
 .gb-pool.gb-editing .gb-box-label{pointer-events:auto}
-.gb-box.gb-selected{border-color:#ea580c;cursor:move;box-shadow:0 0 0 1px rgba(234,88,12,.4)}
+.gb-box.gb-selected{cursor:move;box-shadow:0 0 0 2px rgba(0,0,0,.25)}
 .gb-box-del{position:absolute;top:-8px;right:-8px;width:18px;height:18px;border-radius:50%;border:1.5px solid #fff;background:#ef4444;color:#fff;font-size:.7rem;cursor:pointer;display:none;align-items:center;justify-content:center;line-height:1;pointer-events:auto;z-index:13}
 .gb-pool.gb-editing .gb-box-del{display:flex}
 .gb-handle{position:absolute;width:10px;height:10px;background:#f97316;border:1.5px solid #fff;border-radius:2px;display:none;pointer-events:auto;z-index:12}
@@ -476,13 +476,28 @@ main{max-width:none;margin:0;padding:8px 12px}
 
     var HANDLE_DIRS = ['nw','n','ne','e','se','s','sw','w'];
 
-    function _createBoxEl(label, editable) {
+    var SENTENCE_COLORS = [
+        '#e6194b','#3cb44b','#4363d8','#f58231',
+        '#911eb4','#42d4f4','#f032e6','#bfef45',
+        '#469990','#dcbeff','#9A6324','#fabed4'
+    ];
+
+    function _createBoxEl(label, editable, color, dashed) {
         var box = document.createElement('div');
         box.className = 'gb-box';
+        if (color) {
+            box.style.borderColor = color;
+        }
+        if (dashed) {
+            box.style.borderStyle = 'dashed';
+        }
 
         var lbl = document.createElement('div');
         lbl.className = 'gb-box-label';
         lbl.textContent = label || '';
+        if (color) {
+            lbl.style.background = color;
+        }
         box.appendChild(lbl);
 
         if (editable) {
@@ -491,10 +506,12 @@ main{max-width:none;margin:0;padding:8px 12px}
             del.innerHTML = '&times;';
             box.appendChild(del);
 
+            var handleColor = color || '#f97316';
             HANDLE_DIRS.forEach(function (dir) {
                 var h = document.createElement('div');
                 h.className = 'gb-handle gb-h-' + dir;
                 h.dataset.dir = dir;
+                h.style.background = handleColor;
                 box.appendChild(h);
             });
         }
@@ -534,7 +551,7 @@ main{max-width:none;margin:0;padding:8px 12px}
         if (_gbEditing) return;
         hideGroundingBoxes();
         items.forEach(function (item) {
-            var el = _createBoxEl(item.label, false);
+            var el = _createBoxEl(item.label, false, item.color || null, item.dashed || false);
             _gbPool.appendChild(el);
             _gbEntries.push({ el: el, box: item.box });
         });
@@ -548,15 +565,16 @@ main{max-width:none;margin:0;padding:8px 12px}
     }
 
     /* --- Interactive edit mode --- */
-    function activateBoxEditor(boxes, labels, onChange, onDelete) {
+    function activateBoxEditor(boxes, labels, onChange, onDelete, colors) {
         hideGroundingBoxes();
         _gbEditing = true;
         _gbOnChange = onChange || null;
         _gbOnDelete = onDelete || null;
         _gbPool.classList.add('gb-editing');
+        colors = colors || [];
 
         boxes.forEach(function (box, idx) {
-            var el = _createBoxEl(labels[idx] || '', true);
+            var el = _createBoxEl(labels[idx] || '', true, colors[idx] || null, false);
             _gbPool.appendChild(el);
             _gbEntries.push({ el: el, box: box, idx: idx });
         });

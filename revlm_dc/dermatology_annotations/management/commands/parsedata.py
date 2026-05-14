@@ -41,9 +41,13 @@ STANDARD_MODES = {"photo", "dscope", "combined"}
 
 
 def _load_viz_grounding(viz_path, allowed_modes):
-    """Load the viz grounding CSV and build a lookup: case_id -> list of entries.
+    """Load the viz grounding CSV and build a lookup per case_id.
 
-    Each entry is {"type", "diagnosis", "text", "box": {x,y,w,h}|None}.
+    Returns dict: case_id -> {
+        "entries": [...],           # from viz_grounding (combined image)
+        "entries_clinical": [...],  # from viz_grounding_clinical_remapped
+        "entries_dscope": [...],    # from viz_grounding_dscope_remapped
+    }
     """
     if not viz_path.exists():
         return {}
@@ -52,30 +56,28 @@ def _load_viz_grounding(viz_path, allowed_modes):
     lookup = {}
     for _, row in df.iterrows():
         case_id = row["id"]
-        raw_viz = row.get("viz_grounding", "[]")
-        if pd.isna(raw_viz):
-            raw_viz = "[]"
-        try:
-            entries = json.loads(raw_viz)
-        except (json.JSONDecodeError, TypeError):
-            entries = []
-        lookup[case_id] = entries
+        result = {}
+        for col, key in [
+            ("viz_grounding", "entries"),
+            ("viz_grounding_clinical_remapped", "entries_clinical"),
+            ("viz_grounding_dscope_remapped", "entries_dscope"),
+        ]:
+            raw = row.get(col, "[]")
+            if pd.isna(raw) or raw == "":
+                raw = "[]"
+            try:
+                result[key] = json.loads(raw)
+            except (json.JSONDecodeError, TypeError):
+                result[key] = []
+        lookup[case_id] = result
     return lookup
 
 
-def _attach_grounding_boxes(diagnoses, viz_entries):
-    """Attach pre-computed grounding boxes from viz_entries to diagnoses.
-
-    For each diagnosis, adds ``grounding_box`` (box for the diagnosis name)
-    and ``reasoning_grounding_boxes`` (list parallel to reasoning_sentences).
-    Matches by diagnosis name + sentence text.
-    """
-    if not viz_entries:
-        return
-
+def _entries_to_sentence_lookup(entries):
+    """Build (diag_name, text) -> box lookup from a viz entries list."""
     diag_boxes = {}
     sentence_boxes = {}
-    for entry in viz_entries:
+    for entry in entries:
         if not isinstance(entry, dict) or not entry.get("box"):
             continue
         diag_name = entry.get("diagnosis", "")
@@ -84,6 +86,28 @@ def _attach_grounding_boxes(diagnoses, viz_entries):
             diag_boxes[diag_name] = entry["box"]
         elif entry.get("type") == "sentence":
             sentence_boxes[(diag_name, text)] = entry["box"]
+    return diag_boxes, sentence_boxes
+
+
+def _attach_grounding_boxes(diagnoses, viz_data):
+    """Attach pre-computed grounding boxes to diagnoses.
+
+    For each diagnosis, adds:
+      - ``grounding_box``: box for the diagnosis name (from combined)
+      - ``reasoning_grounding_boxes``: list parallel to reasoning_sentences
+      - ``reasoning_grounding_boxes_clinical``: remapped clinical boxes
+      - ``reasoning_grounding_boxes_dscope``: remapped dscope boxes
+    """
+    if not viz_data:
+        return
+
+    entries = viz_data.get("entries", [])
+    entries_clinical = viz_data.get("entries_clinical", [])
+    entries_dscope = viz_data.get("entries_dscope", [])
+
+    diag_boxes, sentence_boxes = _entries_to_sentence_lookup(entries)
+    _, sentence_boxes_clinical = _entries_to_sentence_lookup(entries_clinical)
+    _, sentence_boxes_dscope = _entries_to_sentence_lookup(entries_dscope)
 
     for diag in diagnoses:
         name = diag.get("name", "")
@@ -91,6 +115,12 @@ def _attach_grounding_boxes(diagnoses, viz_entries):
         sentences = diag.get("reasoning_sentences", [])
         diag["reasoning_grounding_boxes"] = [
             sentence_boxes.get((name, sent)) for sent in sentences
+        ]
+        diag["reasoning_grounding_boxes_clinical"] = [
+            sentence_boxes_clinical.get((name, sent)) for sent in sentences
+        ]
+        diag["reasoning_grounding_boxes_dscope"] = [
+            sentence_boxes_dscope.get((name, sent)) for sent in sentences
         ]
 
 

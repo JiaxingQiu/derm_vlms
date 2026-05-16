@@ -49,21 +49,45 @@
             </div>
             <div class="form-group">
                 <label for="occupation">Occupation<span class="req-star">*</span></label>
-                <input type="text" class="form-control" name="occupation" id="occupation"
-                       value="{{ form_data.occupation|default:'' }}"
-                       placeholder="e.g. Dermatologist, Resident">
+                <select class="form-control" name="occupation" id="occupation">
+                    <option value="">-- Select --</option>
+                    <option value="Dermatologist" {% if form_data.occupation == 'Dermatologist' %}selected{% endif %}>Dermatologist</option>
+                    <option value="PCP" {% if form_data.occupation == 'PCP' %}selected{% endif %}>PCP</option>
+                </select>
             </div>
             <div class="form-group">
                 <label for="years_experience">Years at this occupation<span class="req-star">*</span></label>
                 <input type="number" class="form-control" name="years_experience" id="years_experience"
                        value="{{ form_data.years_experience|default:'' }}"
-                       min="0" placeholder="e.g. 5">
+                       min="0" max="100" step="1" placeholder="e.g. 5">
+                <small class="yrs-error" id="yrs-error" style="display:none;color:#dc3545;font-size:.82rem">
+                    Must be a whole number between 0 and 100.
+                </small>
+            </div>
+            <div class="form-group" id="institution-group" style="display:none">
+                <label for="institution">Institution / Hospital Name<span class="req-star">*</span></label>
+                <div id="institution-derm" style="display:none">
+                    <input type="text" class="form-control" name="institution" id="institution-text"
+                           value="{{ form_data.institution|default:'' }}"
+                           placeholder="e.g. University of Virginia">
+                </div>
+                <div id="institution-pcp" style="display:none">
+                    <select class="form-control" name="institution_type" id="institution-select">
+                        <option value="">-- Select --</option>
+                        <option value="FQHC">FQHC</option>
+                        <option value="Academic">Academic</option>
+                        <option value="Other">Other</option>
+                    </select>
+                    <input type="text" class="form-control mt-2" id="institution-other"
+                           placeholder="Please specify" style="display:none"
+                           value="{{ form_data.institution|default:'' }}">
+                </div>
             </div>
             <div class="form-group">
-                <label for="institution">Institution<span class="req-star">*</span></label>
-                <input type="text" class="form-control" name="institution" id="institution"
-                       value="{{ form_data.institution|default:'' }}"
-                       placeholder="e.g. University of Virginia">
+                <label for="zip_code">Zip Code<span class="req-star">*</span></label>
+                <input type="text" class="form-control" name="zip_code" id="zip_code"
+                       value="{{ form_data.zip_code|default:'' }}"
+                       placeholder="e.g. 22903">
             </div>
         </div>
 
@@ -93,6 +117,69 @@
     var regBtns = document.getElementById('register-buttons');
     var actionInput = document.getElementById('form-action');
     var title = document.getElementById('page-title');
+
+    var occupationEl = document.getElementById('occupation');
+    var instGroup = document.getElementById('institution-group');
+    var instDerm = document.getElementById('institution-derm');
+    var instPcp = document.getElementById('institution-pcp');
+    var instSelect = document.getElementById('institution-select');
+    var instOther = document.getElementById('institution-other');
+    var instText = document.getElementById('institution-text');
+
+    function syncInstitution() {
+        var occ = occupationEl.value;
+        if (!occ) {
+            instGroup.style.display = 'none';
+            return;
+        }
+        instGroup.style.display = '';
+        if (occ === 'Dermatologist') {
+            instDerm.style.display = '';
+            instPcp.style.display = 'none';
+        } else {
+            instDerm.style.display = 'none';
+            instPcp.style.display = '';
+        }
+    }
+
+    occupationEl.addEventListener('change', syncInstitution);
+    syncInstitution();
+
+    var yrsEl = document.getElementById('years_experience');
+    var yrsErr = document.getElementById('yrs-error');
+    function validateYears() {
+        var raw = yrsEl.value.trim();
+        if (!raw) { yrsErr.style.display = 'none'; yrsEl.style.borderColor = ''; return; }
+        var v = Number(raw);
+        var bad = !Number.isInteger(v) || v < 0 || v > 100;
+        yrsErr.style.display = bad ? '' : 'none';
+        yrsEl.style.borderColor = bad ? '#dc3545' : '';
+    }
+    yrsEl.addEventListener('blur', validateYears);
+    yrsEl.addEventListener('input', validateYears);
+
+    instSelect.addEventListener('change', function () {
+        instOther.style.display = instSelect.value === 'Other' ? '' : 'none';
+        if (instSelect.value !== 'Other') instOther.value = '';
+    });
+
+    var form = document.getElementById('auth-form');
+    form.addEventListener('submit', function (e) {
+        if (actionInput.value === 'register') {
+            var yrsEl = document.getElementById('years_experience');
+            var v = Number(yrsEl.value);
+            if (!Number.isInteger(v) || v < 0 || v > 100) {
+                e.preventDefault();
+                alert('Years at this occupation must be a whole number between 0 and 100.');
+                yrsEl.focus();
+                return;
+            }
+        }
+        if (occupationEl.value === 'PCP') {
+            var val = instSelect.value === 'Other' ? instOther.value : instSelect.value;
+            instText.value = val;
+        }
+    });
 
     function showRegister() {
         title.textContent = 'Register';

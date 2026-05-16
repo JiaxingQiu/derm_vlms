@@ -13,6 +13,7 @@ class Dermatologist(models.Model):
     occupation = models.CharField(max_length=200, default="", blank=True)
     years_experience = models.PositiveIntegerField(null=True, blank=True)
     institution = models.CharField(max_length=200, default="", blank=True)
+    zip_code = models.CharField(max_length=20, default="", blank=True)
     registered_at = models.DateTimeField(auto_now_add=True)
 
     # --- Progress ---
@@ -98,23 +99,26 @@ class Annotation(models.Model):
     # [2, 0, 1] = user moved AI's #3 to rank 1, AI's #1 to rank 2, AI's #2 to rank 3.
     diagnosis_order = models.JSONField(default=list, blank=True)
 
-    benign = models.BooleanField(default=False)
-
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
-    # --- Timing (set once, never overwritten) ---
-    # First time the user GET-rendered this (case, model) page.
-    first_entered_at = models.DateTimeField(null=True, blank=True)
-    # First time the user clicked Next/Finish on this page.
-    first_completed_at = models.DateTimeField(null=True, blank=True)
+    # --- Timing ---
+    # Full visit history: [{"entered_at": iso, "completed_at": iso|null}, ...]
+    page_visits = models.JSONField(default=list, blank=True)
 
     @property
-    def first_completion_seconds(self):
-        """Wall-clock seconds from first entry to first completion, or None."""
-        if not self.first_entered_at or not self.first_completed_at:
-            return None
-        return (self.first_completed_at - self.first_entered_at).total_seconds()
+    def total_duration_seconds(self):
+        """Total wall-clock seconds across all visits."""
+        total = 0.0
+        from datetime import datetime
+        for v in (self.page_visits or []):
+            e = v.get("entered_at")
+            c = v.get("completed_at")
+            if e and c:
+                t0 = datetime.fromisoformat(e)
+                t1 = datetime.fromisoformat(c)
+                total += (t1 - t0).total_seconds()
+        return total if total > 0 else None
 
     class Meta:
         constraints = [

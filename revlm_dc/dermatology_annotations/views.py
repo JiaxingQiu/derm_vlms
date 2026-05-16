@@ -361,9 +361,6 @@ def update_annotation_conditional(annotation, payload, model_key, case_data):
     if isinstance(raw_order, list) and all(isinstance(x, int) for x in raw_order):
         annotation.diagnosis_order = raw_order
 
-    if "benign" in payload:
-        annotation.benign = bool(payload["benign"])
-
 
 # ---------------------------------------------------------------------------
 # Page sequence / completion
@@ -449,15 +446,19 @@ def login_view(request):
             occupation = request.POST.get("occupation", "").strip()
             years_experience = request.POST.get("years_experience", "").strip()
             institution = request.POST.get("institution", "").strip()
+            zip_code = request.POST.get("zip_code", "").strip()
             form_data.update({
                 "full_name": full_name,
                 "occupation": occupation,
                 "years_experience": years_experience,
                 "institution": institution,
+                "zip_code": zip_code,
             })
 
-            if not login_id or not full_name or not occupation or not years_experience or not institution:
+            if not login_id or not full_name or not occupation or not years_experience or not institution or not zip_code:
                 error_message = "All fields are required."
+            elif not years_experience.isdigit() or not (0 <= int(years_experience) <= 100):
+                error_message = "Years at this occupation must be a whole number between 0 and 100."
             elif Dermatologist.objects.filter(login_id=login_id).exists():
                 error_message = "Username already taken."
             else:
@@ -476,6 +477,7 @@ def login_view(request):
                         occupation=occupation,
                         years_experience=int(years_experience),
                         institution=institution,
+                        zip_code=zip_code,
                     )
                     assign_cases_for_user(evaluator)
                 raw_token, _ = create_tab_auth_session(login_id)
@@ -612,12 +614,13 @@ def annotations_view(request):
         model=current_model_key or "",
     )
 
-    # Stamp the first time the user lands on this (case, model) page.
-    # Set once; never overwritten on autosaves, navigation back-and-forth,
-    # or reloads.
-    if annotation.first_entered_at is None:
-        annotation.first_entered_at = timezone.now()
-        annotation.save(update_fields=["first_entered_at"])
+    now = timezone.now()
+    visits = annotation.page_visits or []
+    if request.method == "GET":
+        if not visits or visits[-1]["completed_at"] is not None:
+            visits.append({"entered_at": now.isoformat(), "completed_at": None})
+            annotation.page_visits = visits
+            annotation.save(update_fields=["page_visits"])
 
     # ---- POST: save annotation ----
     if request.method == "POST":
@@ -648,10 +651,13 @@ def annotations_view(request):
             annotation, payload, current_model_key, current_case_data,
         )
 
-        # Stamp the first successful Next/Finish click. Set once; never
-        # overwritten if the user navigates back and re-completes.
-        if action in ("next", "finish") and annotation.first_completed_at is None:
-            annotation.first_completed_at = timezone.now()
+        # Update completed_at on every POST (autosave, beacon, next, finish)
+        # so accidental exits still get a timestamp from the last save/beacon.
+        now_ts = timezone.now().isoformat()
+        visits = annotation.page_visits or []
+        if visits:
+            visits[-1]["completed_at"] = now_ts
+            annotation.page_visits = visits
 
         annotation.save()
 
@@ -696,7 +702,6 @@ def annotations_view(request):
         "diagnosis_order": annotation.diagnosis_order or [],
         "other_feedback": of.get("text", ""),
         "other_feedback_crops": of.get("crops", []),
-        "benign": annotation.benign,
     }
 
     all_model_keys = get_model_keys(current_case_data, current_case_id)

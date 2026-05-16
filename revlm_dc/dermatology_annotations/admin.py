@@ -71,18 +71,18 @@ class AnnotationAdmin(admin.ModelAdmin):
         "model",
         "short_feedback",
         "order_display",
-        "first_completion_display",
+        "total_duration_display",
         "updated_at",
     )
     list_filter = ("dermatologist",)
     search_fields = ("dermatologist__login_id", "case_id", "model")
-    readonly_fields = ("first_entered_at", "first_completed_at", "diagnosis_order")
+    readonly_fields = ("diagnosis_order", "page_visits")
 
     def order_display(self, obj):
         order = obj.diagnosis_order
         if not order:
             return "—"
-        return " → ".join(str(i + 1) for i in order)
+        return " → ".join(str(i) for i in order)
     order_display.short_description = "user order"
 
     def short_feedback(self, obj):
@@ -98,9 +98,9 @@ class AnnotationAdmin(admin.ModelAdmin):
         return f"{reviewed}/{len(used)} reviewed"
     short_feedback.short_description = "feedback"
 
-    def first_completion_display(self, obj):
-        return _format_duration(obj.first_completion_seconds)
-    first_completion_display.short_description = "1st completion"
+    def total_duration_display(self, obj):
+        return _format_duration(obj.total_duration_seconds)
+    total_duration_display.short_description = "total duration"
 
 
 @admin.register(Dermatologist)
@@ -180,9 +180,8 @@ class DermatologistAdmin(admin.ModelAdmin):
             "diag_3_name", "diag_3_label", "reasoning_3", "diag_3_correct_differential",
             "diagnosis_order",
             "other_feedback",
-            "first_entered_at",
-            "first_completed_at",
-            "first_completion_seconds",
+            "page_visits",
+            "total_duration_seconds",
             "created_at",
             "updated_at",
         ])
@@ -237,9 +236,8 @@ class DermatologistAdmin(admin.ModelAdmin):
                 *per_diag_cols,
                 order_export,
                 other_fb_export,
-                ann.first_entered_at.isoformat() if ann.first_entered_at else "",
-                ann.first_completed_at.isoformat() if ann.first_completed_at else "",
-                ann.first_completion_seconds if ann.first_completion_seconds is not None else "",
+                json.dumps(ann.page_visits) if ann.page_visits else "",
+                ann.total_duration_seconds if ann.total_duration_seconds is not None else "",
                 ann.created_at,
                 ann.updated_at,
             ])

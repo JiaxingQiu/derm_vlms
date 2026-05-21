@@ -48,7 +48,7 @@
                        value="{{ form_data.full_name|default:'' }}">
             </div>
             <div class="form-group">
-                <label for="occupation">Occupation<span class="req-star">*</span></label>
+                <label for="occupation">Speciality<span class="req-star">*</span></label>
                 <select class="form-control" name="occupation" id="occupation">
                     <option value="">-- Select --</option>
                     <option value="Dermatologist" {% if form_data.occupation == 'Dermatologist' %}selected{% endif %}>Dermatologist</option>
@@ -56,7 +56,7 @@
                 </select>
             </div>
             <div class="form-group">
-                <label for="years_experience">Years at this occupation<span class="req-star">*</span></label>
+                <label for="years_experience">Years at this speciality<span class="req-star">*</span></label>
                 <input type="number" class="form-control" name="years_experience" id="years_experience"
                        value="{{ form_data.years_experience|default:'' }}"
                        min="0" max="100" step="1" placeholder="e.g. 5">
@@ -64,27 +64,35 @@
                     Must be a whole number between 0 and 100.
                 </small>
             </div>
-            <div class="form-group" id="institution-group" style="display:none">
-                <label for="institution">Institution / Hospital Name<span class="req-star">*</span></label>
-                <div id="institution-derm" style="display:none">
-                    <input type="text" class="form-control" name="institution" id="institution-text"
-                           value="{{ form_data.institution|default:'' }}"
-                           placeholder="e.g. University of Virginia">
-                </div>
-                <div id="institution-pcp" style="display:none">
-                    <select class="form-control" name="institution_type" id="institution-select">
-                        <option value="">-- Select --</option>
-                        <option value="FQHC">FQHC</option>
-                        <option value="Academic">Academic</option>
-                        <option value="Other">Other</option>
-                    </select>
-                    <input type="text" class="form-control mt-2" id="institution-other"
-                           placeholder="Please specify" style="display:none"
-                           value="{{ form_data.institution|default:'' }}">
-                </div>
+            <div class="form-group" id="practice-setting-group" style="display:none">
+                <label for="practice_setting">Practice Setting<span class="req-star">*</span></label>
+                <select class="form-control" id="practice-setting-select">
+                    <option value="">-- Select --</option>
+                    <option value="Academic Medical Center">Academic Medical Center</option>
+                    <option value="Community Hospital">Community Hospital</option>
+                    <option value="FQHC">FQHC</option>
+                    <option value="Private Practice">Private Practice</option>
+                    <option value="Veterans Affairs">Veterans Affairs</option>
+                    <option value="Other">Other</option>
+                </select>
+                <input type="text" class="form-control mt-2" id="institution-detail"
+                       style="display:none"
+                       placeholder="">
+                <input type="hidden" name="institution" id="institution-hidden"
+                       value="{{ form_data.institution|default:'' }}">
             </div>
             <div class="form-group">
-                <label for="zip_code">Zip Code<span class="req-star">*</span></label>
+                <label for="dermoscopy_experience">Dermoscopy Experience<span class="req-star">*</span></label>
+                <select class="form-control" name="dermoscopy_experience" id="dermoscopy_experience">
+                    <option value="">-- Select --</option>
+                    <option value="Never" {% if form_data.dermoscopy_experience == 'Never' %}selected{% endif %}>Never</option>
+                    <option value="Occasionally" {% if form_data.dermoscopy_experience == 'Occasionally' %}selected{% endif %}>Occasionally</option>
+                    <option value="Regularly" {% if form_data.dermoscopy_experience == 'Regularly' %}selected{% endif %}>Regularly</option>
+                    <option value="Daily" {% if form_data.dermoscopy_experience == 'Daily' %}selected{% endif %}>Daily</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="zip_code">Zip Code of Practice<span class="req-star">*</span></label>
                 <input type="text" class="form-control" name="zip_code" id="zip_code"
                        value="{{ form_data.zip_code|default:'' }}"
                        placeholder="e.g. 22903">
@@ -119,31 +127,36 @@
     var title = document.getElementById('page-title');
 
     var occupationEl = document.getElementById('occupation');
-    var instGroup = document.getElementById('institution-group');
-    var instDerm = document.getElementById('institution-derm');
-    var instPcp = document.getElementById('institution-pcp');
-    var instSelect = document.getElementById('institution-select');
-    var instOther = document.getElementById('institution-other');
-    var instText = document.getElementById('institution-text');
+    var settingGroup = document.getElementById('practice-setting-group');
+    var settingSelect = document.getElementById('practice-setting-select');
+    var instDetail = document.getElementById('institution-detail');
+    var instHidden = document.getElementById('institution-hidden');
 
-    function syncInstitution() {
+    function syncPracticeSetting() {
         var occ = occupationEl.value;
+        settingGroup.style.display = occ ? '' : 'none';
         if (!occ) {
-            instGroup.style.display = 'none';
-            return;
-        }
-        instGroup.style.display = '';
-        if (occ === 'Dermatologist') {
-            instDerm.style.display = '';
-            instPcp.style.display = 'none';
-        } else {
-            instDerm.style.display = 'none';
-            instPcp.style.display = '';
+            settingSelect.value = '';
+            instDetail.style.display = 'none';
+            instDetail.value = '';
         }
     }
 
-    occupationEl.addEventListener('change', syncInstitution);
-    syncInstitution();
+    function syncInstitutionBox() {
+        var setting = settingSelect.value;
+        if (setting) {
+            instDetail.style.display = '';
+            instDetail.placeholder = 'Which?';
+        } else {
+            instDetail.style.display = 'none';
+            instDetail.value = '';
+        }
+    }
+
+    occupationEl.addEventListener('change', syncPracticeSetting);
+    settingSelect.addEventListener('change', syncInstitutionBox);
+    syncPracticeSetting();
+    syncInstitutionBox();
 
     var yrsEl = document.getElementById('years_experience');
     var yrsErr = document.getElementById('yrs-error');
@@ -158,11 +171,6 @@
     yrsEl.addEventListener('blur', validateYears);
     yrsEl.addEventListener('input', validateYears);
 
-    instSelect.addEventListener('change', function () {
-        instOther.style.display = instSelect.value === 'Other' ? '' : 'none';
-        if (instSelect.value !== 'Other') instOther.value = '';
-    });
-
     var form = document.getElementById('auth-form');
     form.addEventListener('submit', function (e) {
         if (actionInput.value === 'register') {
@@ -170,14 +178,13 @@
             var v = Number(yrsEl.value);
             if (!Number.isInteger(v) || v < 0 || v > 100) {
                 e.preventDefault();
-                alert('Years at this occupation must be a whole number between 0 and 100.');
+                alert('Years at this speciality must be a whole number between 0 and 100.');
                 yrsEl.focus();
                 return;
             }
-        }
-        if (occupationEl.value === 'PCP') {
-            var val = instSelect.value === 'Other' ? instOther.value : instSelect.value;
-            instText.value = val;
+            var setting = settingSelect.value;
+            var detail = instDetail.value.trim();
+            instHidden.value = detail ? setting + ': ' + detail : setting;
         }
     });
 

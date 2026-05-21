@@ -141,8 +141,8 @@ conda activate dermato_llama
 cd revlm_dc
 python manage.py makemigrations dermatology_annotations
 python manage.py migrate
-python manage.py parsedata
-python manage.py generate_assignments
+# python manage.py parsedata
+# python manage.py generate_assignments
 python manage.py runserver
 ```
 

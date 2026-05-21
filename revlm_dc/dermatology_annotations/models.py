@@ -13,6 +13,7 @@ class Dermatologist(models.Model):
     occupation = models.CharField(max_length=200, default="", blank=True)
     years_experience = models.PositiveIntegerField(null=True, blank=True)
     institution = models.CharField(max_length=200, default="", blank=True)
+    dermoscopy_experience = models.CharField(max_length=50, default="", blank=True)
     zip_code = models.CharField(max_length=20, default="", blank=True)
     registered_at = models.DateTimeField(auto_now_add=True)
 

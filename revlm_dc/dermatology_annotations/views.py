@@ -446,16 +446,18 @@ def login_view(request):
             occupation = request.POST.get("occupation", "").strip()
             years_experience = request.POST.get("years_experience", "").strip()
             institution = request.POST.get("institution", "").strip()
+            dermoscopy_experience = request.POST.get("dermoscopy_experience", "").strip()
             zip_code = request.POST.get("zip_code", "").strip()
             form_data.update({
                 "full_name": full_name,
                 "occupation": occupation,
                 "years_experience": years_experience,
                 "institution": institution,
+                "dermoscopy_experience": dermoscopy_experience,
                 "zip_code": zip_code,
             })
 
-            if not login_id or not full_name or not occupation or not years_experience or not institution or not zip_code:
+            if not login_id or not full_name or not occupation or not years_experience or not institution or not dermoscopy_experience or not zip_code:
                 error_message = "All fields are required."
             elif not years_experience.isdigit() or not (0 <= int(years_experience) <= 100):
                 error_message = "Years at this occupation must be a whole number between 0 and 100."
@@ -477,6 +479,7 @@ def login_view(request):
                         occupation=occupation,
                         years_experience=int(years_experience),
                         institution=institution,
+                        dermoscopy_experience=dermoscopy_experience,
                         zip_code=zip_code,
                     )
                     assign_cases_for_user(evaluator)

@@ -51,7 +51,7 @@
 .diag-name{flex:1;font-size:.82rem;font-weight:700;color:#1f2937;line-height:1.4}
 
 .diag-expand{padding:0 12px 12px 12px;border-top:1px solid #d1d5db;background:#fff;display:block}
-.diag-expand .sub-label{font-size:.68rem;text-transform:uppercase;letter-spacing:.05em;color:#6b7280;font-weight:600;margin:10px 0 6px}
+.diag-expand .sub-label{font-size:.82rem;text-transform:none;letter-spacing:0;color:#6b7280;font-weight:600;margin:10px 0 6px}
 .sub-label .req{color:#dc2626;font-weight:600;text-transform:none;letter-spacing:0;font-size:.68rem;margin-left:4px}
 
 .reason-list{display:flex;flex-direction:column;gap:6px}
@@ -695,7 +695,7 @@
         // --- Incorrect button (created here, appended into header below) ---
         var cardDel = document.createElement('div');
         cardDel.className = 'diag-card-del';
-        cardDel.textContent = 'Incorrect';
+        cardDel.textContent = 'Click here if this diagnosis is unreasonable.';
         cardDel.title = 'Mark this diagnosis as incorrect';
         cardDel.addEventListener('mousedown', function (e) { e.stopPropagation(); });
         cardDel.onclick = function (e) {
@@ -843,7 +843,7 @@
                 origLabel.style.padding = '0 12px';
                 origLabel.style.textTransform = 'none';
                 origLabel.style.fontSize = '.78rem';
-                origLabel.textContent = 'What is wrong in AI reasoning for its original diagnosis "' + diag.originalName + '"?';
+                origLabel.innerHTML = 'Correct the AI reasoning statements for its original diagnosis "' + diag.originalName + '"<br><span style="font-weight:400;font-style:italic;color:#9ca3af">Click to edit.</span>';
                 exp.appendChild(origLabel);
 
                 var origList = document.createElement('div');
@@ -922,7 +922,7 @@
         if (diag.reasoning_edits.length) {
             var rLabel = document.createElement('div');
             rLabel.className = 'sub-label';
-            rLabel.textContent = 'AI reasoning';
+            rLabel.textContent = 'Click the AI-generated reasoning below to edit';
             exp.appendChild(rLabel);
 
             var rList = document.createElement('div');
@@ -936,7 +936,7 @@
         var addBtn = document.createElement('button');
         addBtn.type = 'button';
         addBtn.className = 'reason-add';
-        addBtn.innerHTML = '+ Add another reasoning';
+        addBtn.innerHTML = '+ Add another reasoning statement';
         addBtn.onclick = function () {
             diag.reasoning_edits.push({
                 original: 'added',

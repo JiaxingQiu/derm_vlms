@@ -36,8 +36,8 @@
 {% endblock %}
 
 {% block interface_css %}
-.uncond-badge{background:linear-gradient(135deg,#ecfdf5,#d1fae5)!important;border-bottom:2px solid #6ee7b7!important;color:#065f46!important}
-.uncond-crop-hint{color:#065f46!important}
+.uncond-badge{background:linear-gradient(135deg,#eef2ff,#e0e7ff)!important;border-bottom:2px solid #c7d2fe!important;color:#4338ca!important}
+.uncond-crop-hint{color:#4338ca!important}
 .field-required{color:#dc2626;font-weight:700;font-size:.85rem}
 
 .diag-list{display:flex;flex-direction:column;gap:10px}
@@ -46,11 +46,22 @@
 .diag-card{flex:1;border:1px solid #d1d5db;border-radius:8px;background:#fff;overflow:visible;position:relative}
 .diag-head{display:flex;align-items:center;gap:8px;padding:8px 12px;user-select:none;background:#f3f4f6;border-radius:8px 8px 0 0}
 .diag-name{flex:1;font-size:.82rem;font-weight:700;color:#1f2937;line-height:1.4}
-.diag-expand{padding:0 12px 12px 12px;border-top:1px solid #d1d5db;background:#fff;display:block}
+.diag-expand{padding:0;border-top:1px solid #d1d5db;background:#fff;display:block}
+
 .diag-replacement{padding:12px;display:flex;flex-direction:column;gap:10px}
 .diag-replacement textarea{width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:.82rem;font-family:inherit;resize:vertical;line-height:1.5;background:#fff;color:#1f2937}
 .diag-replacement textarea:focus{outline:none;border-color:#6b7280;box-shadow:0 0 0 2px rgba(107,114,128,.15)}
 .diag-replacement textarea::placeholder{color:#9ca3af}
+
+.reason-row{position:relative}
+.reason-del{position:absolute;top:-8px;right:-8px;width:20px;height:20px;border-radius:50%;border:1.5px solid #fff;background:#ef4444;color:#fff;font-size:.75rem;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;z-index:2;box-shadow:0 1px 3px rgba(0,0,0,.15)}
+.reason-del:hover{background:#dc2626}
+
+.reason-add{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;margin-top:-4px;border:1px dashed #d1d5db;border-radius:6px;background:transparent;cursor:pointer;font-size:.72rem;color:#6b7280;transition:all .15s}
+.reason-add:hover{background:#f9fafb;border-color:#9ca3af;color:#374151}
+
+.reason-hint{font-size:.72rem;color:#9ca3af;font-style:italic;margin-bottom:4px}
+
 .crop-error{display:none;font-size:.75rem;color:#dc2626;font-weight:500;margin-top:4px}
 .crop-error.show{display:block}
 
@@ -62,8 +73,7 @@
 {% block interface_js %}
     var saved = JSON.parse(document.getElementById('saved-unconditional-data').textContent || '{}');
     var savedDiags = Array.isArray(saved.user_diagnoses) ? saved.user_diagnoses : ['', '', ''];
-    var savedReasons = Array.isArray(saved.user_reasons) ? saved.user_reasons : ['', '', ''];
-    var savedDiagCrops = Array.isArray(saved.user_diagnoses_crops) ? saved.user_diagnoses_crops : [[], [], []];
+    var savedReasons = Array.isArray(saved.user_reasons) ? saved.user_reasons : [[], [], []];
     var savedReasonCrops = Array.isArray(saved.user_reasons_crops) ? saved.user_reasons_crops : [[], [], []];
     var savedOther = saved.other_feedback || '';
     var savedOtherCrops = Array.isArray(saved.other_feedback_crops) ? saved.other_feedback_crops : [];
@@ -73,63 +83,84 @@
     defaultFallbackField = otherEl;
 
     var _skipNextBlur = false;
+    var _editorIdxMap = [];
+    var _activeSentDiag = -1;
+    var _activeSentIdx = -1;
 
     document.addEventListener('mousedown', function (e) {
         var active = document.activeElement;
         if (!active || !active.classList) return;
-        if (!active.classList.contains('uncond-reason-ta')) return;
+        if (!active.classList.contains('reason-textarea')) return;
         if (e.target.closest && e.target.closest('.left-panel')) {
             e.preventDefault();
         }
     }, true);
 
+    function _buildSentences(reasons, crops) {
+        if (Array.isArray(reasons) && reasons.length > 0 && typeof reasons[0] === 'string') {
+            return reasons.map(function (text, i) {
+                var c = Array.isArray(crops) && Array.isArray(crops[i]) ? crops[i] : [];
+                return { text: text || '', crops: c };
+            });
+        }
+        return [{ text: '', crops: [] }];
+    }
+
     var state = {
         diagnoses: [0, 1, 2].map(function (i) {
             return {
                 name: savedDiags[i] || '',
-                reason: savedReasons[i] || '',
-                reason_crops: Array.isArray(savedReasonCrops[i]) ? savedReasonCrops[i] : []
+                sentences: _buildSentences(savedReasons[i], savedReasonCrops[i])
             };
         }),
         other_feedback: savedOther,
         other_feedback_crops: savedOtherCrops
     };
 
-    var _activeEditorIdx = -1;
-    var _editorIdxMap = [];
-
-    function _activateReasonEditor(dIdx) {
+    function _activateSentenceEditor(dIdx, sIdx) {
         var diag = state.diagnoses[dIdx];
-        if (!diag) return;
-        var ta = document.querySelector('textarea.uncond-reason-ta[data-diag-index="' + dIdx + '"]');
+        if (!diag || !diag.sentences[sIdx]) return;
+        var sent = diag.sentences[sIdx];
+        var ta = document.querySelector('textarea.reason-textarea[data-diag-index="' + dIdx + '"][data-sent-index="' + sIdx + '"]');
         if (!ta) return;
-        var crops = diag.reason_crops || [];
+        var crops = sent.crops || [];
         var boxes = [], labels = [], idxMap = [];
         crops.forEach(function (c, i) { if (c) { boxes.push(c); labels.push('ev ' + (i + 1)); idxMap.push(i); } });
         _editorIdxMap = idxMap;
-        _activeEditorIdx = dIdx;
+        _activeSentDiag = dIdx;
+        _activeSentIdx = sIdx;
         if (!boxes.length) return;
         activateBoxEditor(boxes, labels,
             function (visIdx, updatedBox) {
-                diag.reason_crops[idxMap[visIdx]] = updatedBox;
+                sent.crops[idxMap[visIdx]] = updatedBox;
                 syncHiddenPayload();
             },
             function (visIdx) {
                 var realIdx = idxMap[visIdx];
-                diag.reason_crops.splice(realIdx, 1);
+                sent.crops.splice(realIdx, 1);
                 var text = ta.value;
                 var removed = realIdx + 1;
                 text = text.replace(new RegExp('\\[ev\\s+' + removed + '\\]\\s?', 'g'), '');
-                for (var n = removed + 1; n <= diag.reason_crops.length + 1; n++)
+                for (var n = removed + 1; n <= sent.crops.length + 1; n++)
                     text = text.replace(new RegExp('\\[ev\\s+' + n + '\\]', 'g'), '[ev ' + (n - 1) + ']');
                 ta.value = text;
-                diag.reason = text;
+                sent.text = text;
                 _skipNextBlur = true;
                 deactivateBoxEditor();
                 syncHiddenPayload();
                 render();
             }
         );
+    }
+
+    function _diagHasCrops(diag) {
+        return diag.sentences.some(function (s) {
+            return (s.crops || []).some(function (c) { return !!c; });
+        });
+    }
+
+    function _diagHasText(diag) {
+        return diag.sentences.some(function (s) { return s.text.trim(); });
     }
 
     getFieldTarget = function (fieldEl) {
@@ -142,16 +173,15 @@
             };
         }
         var dIdx = Number(fieldEl.dataset.diagIndex);
+        var sIdx = Number(fieldEl.dataset.sentIndex);
         if (!Number.isInteger(dIdx) || !state.diagnoses[dIdx]) return null;
-        var diag = state.diagnoses[dIdx];
-        if (fieldEl.classList.contains('uncond-reason-ta')) {
-            return {
-                getCrops: function () { return diag.reason_crops; },
-                setCrops: function (c) { diag.reason_crops = c; },
-                updateText: function (v) { diag.reason = v; }
-            };
-        }
-        return null;
+        if (!Number.isInteger(sIdx) || !state.diagnoses[dIdx].sentences[sIdx]) return null;
+        var sent = state.diagnoses[dIdx].sentences[sIdx];
+        return {
+            getCrops: function () { return sent.crops; },
+            setCrops: function (c) { sent.crops = c; },
+            updateText: function (v) { sent.text = v; }
+        };
     };
 
     syncHiddenPayload = function () {
@@ -160,8 +190,12 @@
             interface_type: 'unconditional',
             user_diagnoses: state.diagnoses.map(function (d) { return d.name; }),
             user_diagnoses_crops: [[], [], []],
-            user_reasons: state.diagnoses.map(function (d) { return d.reason; }),
-            user_reasons_crops: state.diagnoses.map(function (d) { return d.reason_crops; }),
+            user_reasons: state.diagnoses.map(function (d) {
+                return d.sentences.map(function (s) { return s.text; });
+            }),
+            user_reasons_crops: state.diagnoses.map(function (d) {
+                return d.sentences.map(function (s) { return s.crops; });
+            }),
             other_feedback: state.other_feedback,
             other_feedback_crops: state.other_feedback_crops
         });
@@ -171,27 +205,41 @@
         var ok = true;
         state.diagnoses.forEach(function (d, i) {
             var nameTa = document.querySelector('textarea.uncond-name-ta[data-diag-index="' + i + '"]');
-            var reasonTa = document.querySelector('textarea.uncond-reason-ta[data-diag-index="' + i + '"]');
-            var cropErr = reasonTa ? reasonTa.parentElement.querySelector('.crop-error') : null;
+            var cardEl = document.querySelector('.diag-card[data-diag-index="' + i + '"]');
+            var cropErr = cardEl ? cardEl.querySelector('.crop-error') : null;
             if (nameTa) { nameTa.style.borderColor = ''; nameTa.style.boxShadow = ''; }
-            if (reasonTa) { reasonTa.style.borderColor = ''; reasonTa.style.boxShadow = ''; }
             if (cropErr) cropErr.classList.remove('show');
+
             if (!d.name.trim()) {
                 if (nameTa) { nameTa.style.borderColor = '#dc2626'; nameTa.style.boxShadow = '0 0 0 2px rgba(220,38,38,.12)'; }
                 ok = false;
             }
-            if (!d.reason.trim()) {
-                if (reasonTa) { reasonTa.style.borderColor = '#dc2626'; reasonTa.style.boxShadow = '0 0 0 2px rgba(220,38,38,.12)'; }
+            if (!_diagHasText(d)) {
+                var firstTa = cardEl ? cardEl.querySelector('.reason-textarea') : null;
+                if (firstTa) { firstTa.closest('.reason-row').style.borderColor = '#dc2626'; }
                 ok = false;
             }
-            var hasCrops = (d.reason_crops || []).some(function (c) { return !!c; });
-            if (!hasCrops) {
+            if (!_diagHasCrops(d)) {
                 if (cropErr) cropErr.classList.add('show');
                 ok = false;
             }
         });
         return ok;
     };
+
+    document.addEventListener('mousedown', function (e) {
+        state.diagnoses.forEach(function (diag, dIdx) {
+            var cardEl = document.querySelector('.diag-card[data-diag-index="' + dIdx + '"]');
+            if (!cardEl) return;
+            if (cardEl.contains(e.target)) return;
+            var cropErr = cardEl.querySelector('.crop-error');
+            if (cropErr && _diagHasText(diag) && !_diagHasCrops(diag)) {
+                cropErr.classList.add('show');
+            } else if (cropErr) {
+                cropErr.classList.remove('show');
+            }
+        });
+    });
 
     render = function () {
         hideNavWarning();
@@ -208,6 +256,7 @@
 
             var card = document.createElement('div');
             card.className = 'diag-card';
+            card.dataset.diagIndex = String(dIdx);
 
             var head = document.createElement('div');
             head.className = 'diag-head';
@@ -221,8 +270,10 @@
 
             head.addEventListener('mouseenter', function () {
                 var items = [];
-                (diag.reason_crops || []).forEach(function (crop, i) {
-                    if (crop) items.push({ box: crop, label: 'ev ' + (i + 1) });
+                diag.sentences.forEach(function (s, si) {
+                    (s.crops || []).forEach(function (crop, ci) {
+                        if (crop) items.push({ box: crop, label: 'S' + (si + 1) + ' ev ' + (ci + 1) });
+                    });
                 });
                 if (items.length) showGroundingBoxes(items);
             });
@@ -235,6 +286,7 @@
             var exp = document.createElement('div');
             exp.className = 'diag-expand';
 
+            // Diagnosis name textarea
             var repDiv = document.createElement('div');
             repDiv.className = 'diag-replacement';
 
@@ -253,72 +305,112 @@
             });
             repDiv.appendChild(nameTa);
 
-            var reasonTa = document.createElement('textarea');
-            reasonTa.className = 'uncond-reason-ta';
-            reasonTa.rows = 3;
-            reasonTa.placeholder = 'Please provide your reasoning and at least one visual evidence by cropping.';
-            reasonTa.value = diag.reason;
-            reasonTa.dataset.diagIndex = String(dIdx);
-            reasonTa.addEventListener('input', function () {
-                diag.reason = reasonTa.value;
-                var prevCropCount = (diag.reason_crops || []).length;
-                syncFieldCrops(reasonTa);
-                syncHiddenPayload();
-                var newCropCount = (diag.reason_crops || []).length;
-                if (prevCropCount !== newCropCount && document.activeElement === reasonTa) {
+            diag.sentences.forEach(function (sent, sIdx) {
+                var sRow = document.createElement('div');
+                sRow.className = 'reason-row';
+
+                var ta = document.createElement('textarea');
+                ta.className = 'reason-textarea';
+                ta.rows = 2;
+                ta.placeholder = 'Please provide your reasoning and at least one visual evidence by cropping.';
+                ta.value = sent.text;
+                ta.dataset.diagIndex = String(dIdx);
+                ta.dataset.sentIndex = String(sIdx);
+
+                ta.addEventListener('input', function () {
+                    sent.text = ta.value;
+                    syncFieldCrops(ta);
+                    syncHiddenPayload();
+                    var evDiv = sRow.querySelector('.field-evidence');
+                    if (evDiv) renderFieldEvidenceInto(evDiv, ta);
+                });
+
+                ta.addEventListener('focus', function () {
+                    _activateSentenceEditor(dIdx, sIdx);
+                });
+
+                ta.addEventListener('blur', function () {
+                    if (_skipNextBlur) { _skipNextBlur = false; return; }
                     deactivateBoxEditor();
-                    _activateReasonEditor(dIdx);
-                }
-            });
-            reasonTa.addEventListener('focus', function () {
-                _activateReasonEditor(dIdx);
-            });
-            reasonTa.addEventListener('blur', function () {
-                if (_skipNextBlur) { _skipNextBlur = false; return; }
-                deactivateBoxEditor();
-                var errEl = reasonTa.parentElement.querySelector('.crop-error');
-                if (errEl) {
-                    var hasCrops = (diag.reason_crops || []).some(function (c) { return !!c; });
-                    var hasText = reasonTa.value.trim();
-                    errEl.classList.toggle('show', hasText && !hasCrops);
-                }
-            });
-            function _cursorSelectBox(ta, dIdx) {
-                return function () {
-                    var pos = ta.selectionStart;
-                    var text = ta.value;
-                    var re = /\[ev\s+(\d+)\]/g, m;
-                    while ((m = re.exec(text)) !== null) {
-                        if (pos >= m.index && pos <= m.index + m[0].length) {
-                            var evN = parseInt(m[1], 10);
-                            var visIdx = _editorIdxMap.indexOf(evN - 1);
-                            if (visIdx >= 0) _selectBox(visIdx);
-                            return;
+                });
+
+                (function (ta, dIdx, sIdx) {
+                    function _cursorSelect() {
+                        var pos = ta.selectionStart;
+                        var text = ta.value;
+                        var re = /\[ev\s+(\d+)\]/g, m;
+                        while ((m = re.exec(text)) !== null) {
+                            if (pos >= m.index && pos <= m.index + m[0].length) {
+                                var evN = parseInt(m[1], 10);
+                                var visIdx = _editorIdxMap.indexOf(evN - 1);
+                                if (visIdx >= 0) _selectBox(visIdx);
+                                return;
+                            }
                         }
                     }
-                };
-            }
-            var selectFn = _cursorSelectBox(reasonTa, dIdx);
-            reasonTa.addEventListener('click', selectFn);
-            reasonTa.addEventListener('keyup', selectFn);
-            repDiv.appendChild(reasonTa);
+                    ta.addEventListener('click', _cursorSelect);
+                    ta.addEventListener('keyup', _cursorSelect);
+                })(ta, dIdx, sIdx);
 
+                sRow.appendChild(ta);
+
+                if (diag.sentences.length > 1) {
+                    var del = document.createElement('div');
+                    del.className = 'reason-del';
+                    del.innerHTML = '&times;';
+                    del.addEventListener('click', function (e) {
+                        e.stopPropagation();
+                        deactivateBoxEditor();
+                        diag.sentences.splice(sIdx, 1);
+                        syncHiddenPayload();
+                        render();
+                    });
+                    sRow.appendChild(del);
+                }
+
+                var evDiv = document.createElement('div');
+                evDiv.className = 'field-evidence';
+                sRow.appendChild(evDiv);
+                renderFieldEvidenceInto(evDiv, ta);
+
+                sRow.addEventListener('mouseenter', function () {
+                    var items = [];
+                    (sent.crops || []).forEach(function (crop, i) {
+                        if (crop) items.push({ box: crop, label: 'ev ' + (i + 1) });
+                    });
+                    if (items.length) showGroundingBoxes(items);
+                });
+                sRow.addEventListener('mouseleave', function () {
+                    hideGroundingBoxes();
+                });
+
+                repDiv.appendChild(sRow);
+            });
+
+            // + Add another reasoning sentence
+            var addBtn = document.createElement('button');
+            addBtn.type = 'button';
+            addBtn.className = 'reason-add';
+            addBtn.innerHTML = '+ Add another reasoning sentence';
+            addBtn.addEventListener('click', function () {
+                diag.sentences.push({ text: '', crops: [] });
+                syncHiddenPayload();
+                render();
+                var newTa = document.querySelector('textarea.reason-textarea[data-diag-index="' + dIdx + '"][data-sent-index="' + (diag.sentences.length - 1) + '"]');
+                if (newTa) newTa.focus();
+            });
+            repDiv.appendChild(addBtn);
+
+            var hint = document.createElement('div');
+            hint.className = 'reason-hint';
+            hint.textContent = 'Provide reasoning one sentence at a time. Each sentence should describe one or a few visual details \u2014 crop evidence from the image for each.';
+            repDiv.appendChild(hint);
+
+            // Crop error (card-level)
             var cropErr = document.createElement('div');
             cropErr.className = 'crop-error';
             cropErr.textContent = 'Please provide at least one visual evidence by cropping.';
             repDiv.appendChild(cropErr);
-
-            repDiv.addEventListener('mouseenter', function () {
-                var crops = diag.reason_crops || [];
-                var items = [];
-                crops.forEach(function (crop, i) {
-                    if (crop) items.push({ box: crop, label: 'ev ' + (i + 1) });
-                });
-                if (items.length) showGroundingBoxes(items);
-            });
-            repDiv.addEventListener('mouseleave', function () {
-                hideGroundingBoxes();
-            });
 
             exp.appendChild(repDiv);
             card.appendChild(exp);

@@ -936,14 +936,32 @@ def _pcp_annotations_view(request, raw_token, tab_session):
 
         if current_itype == "unconditional":
             annotation.interface_type = "unconditional"
-            annotation.unconditional_data = {
-                "user_diagnoses": payload.get("user_diagnoses", []),
-                "user_diagnoses_crops": payload.get("user_diagnoses_crops", []),
-                "user_reasons": payload.get("user_reasons", []),
-                "user_reasons_crops": payload.get("user_reasons_crops", []),
-                "other_feedback": payload.get("other_feedback", ""),
-                "other_feedback_crops": payload.get("other_feedback_crops", []),
-            }
+            user_diagnoses = payload.get("user_diagnoses", [])
+            user_reasons = payload.get("user_reasons", [])
+            user_reasons_crops = payload.get("user_reasons_crops", [])
+            for i in range(3):
+                dx = user_diagnoses[i] if i < len(user_diagnoses) else ""
+                sentences = user_reasons[i] if i < len(user_reasons) and isinstance(user_reasons[i], list) else []
+                sent_crops = user_reasons_crops[i] if i < len(user_reasons_crops) and isinstance(user_reasons_crops[i], list) else []
+                reasoning_entries = []
+                for si, text in enumerate(sentences):
+                    crops = sent_crops[si] if si < len(sent_crops) and isinstance(sent_crops[si], list) else []
+                    reasoning_entries.append({
+                        "original": text or "",
+                        "edited": text or "",
+                        "crops": crops,
+                    })
+                if not reasoning_entries:
+                    reasoning_entries = [{"original": "", "edited": "", "crops": []}]
+                setattr(annotation, f"diagnosis_{i + 1}", {
+                    "name": dx,
+                    "label": "",
+                    "correct_differential": "",
+                })
+                setattr(annotation, f"reasoning_{i + 1}", reasoning_entries)
+            other_text = payload.get("other_feedback", "")
+            other_crops = payload.get("other_feedback_crops", [])
+            annotation.other_feedback = _tc(other_text, other_crops)
         else:
             annotation.interface_type = "conditional"
             update_annotation_conditional(
@@ -1001,7 +1019,29 @@ def _pcp_annotations_view(request, raw_token, tab_session):
     lesion_display_name = f"Lesion {lesion_id}"
 
     if current_itype == "unconditional":
-        saved_uncond = annotation.unconditional_data or {}
+        user_diagnoses = []
+        user_reasons = []
+        user_reasons_crops = []
+        for i in range(1, 4):
+            dx = getattr(annotation, f"diagnosis_{i}", None) or {}
+            user_diagnoses.append(dx.get("name", ""))
+            reasoning = getattr(annotation, f"reasoning_{i}", None) or []
+            sent_texts = []
+            sent_crops = []
+            for entry in reasoning:
+                if isinstance(entry, dict):
+                    sent_texts.append(entry.get("edited", ""))
+                    sent_crops.append(entry.get("crops", []))
+            user_reasons.append(sent_texts if sent_texts else [""])
+            user_reasons_crops.append(sent_crops if sent_crops else [[]])
+        of = annotation.other_feedback or _EMPTY_TC
+        saved_uncond = {
+            "user_diagnoses": user_diagnoses,
+            "user_reasons": user_reasons,
+            "user_reasons_crops": user_reasons_crops,
+            "other_feedback": of.get("text", ""),
+            "other_feedback_crops": of.get("crops", []),
+        }
         context = {
             "login_id": login_id,
             "case_id": current_case_id,

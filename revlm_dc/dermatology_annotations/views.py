@@ -15,7 +15,11 @@ from django.urls import reverse
 from django.shortcuts import redirect, render
 from django.utils import timezone
 
-from .models import Annotation, Assignment, Dermatologist, TabAuthSession
+from .models import (
+    Annotation, Assignment, Dermatologist,
+    PCPAnnotation, PCPAssignment, PCPUser,
+    TabAuthSession,
+)
 
 
 _EMPTY_TC = {"text": "", "crops": []}
@@ -37,11 +41,12 @@ def load_annotations_data():
 # User / assignment helpers (DB-backed)
 # ---------------------------------------------------------------------------
 
-def get_user_case_ids(dermatologist):
+def get_user_case_ids(evaluator, role="Dermatologist"):
     """Return the ordered list of case_ids assigned to this evaluator."""
+    Model = PCPAssignment if role == "PCP" else Assignment
     return list(
-        Assignment.objects
-        .filter(evaluator=dermatologist)
+        Model.objects
+        .filter(evaluator=evaluator)
         .order_by("order")
         .values_list("case_id", flat=True)
     )
@@ -91,15 +96,24 @@ def hash_auth_token(raw_token):
     return hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
 
 
-def create_tab_auth_session(login_id):
-    dermatologist, _ = Dermatologist.objects.get_or_create(login_id=login_id)
+def create_tab_auth_session(login_id, role="Dermatologist"):
     raw_token = secrets.token_urlsafe(32)
-    TabAuthSession.objects.create(
-        dermatologist=dermatologist,
-        token_hash=hash_auth_token(raw_token),
-        expires_at=timezone.now() + AUTH_TOKEN_TTL,
-    )
-    return raw_token, dermatologist
+    if role == "PCP":
+        pcp_user, _ = PCPUser.objects.get_or_create(login_id=login_id)
+        TabAuthSession.objects.create(
+            pcp_user=pcp_user,
+            token_hash=hash_auth_token(raw_token),
+            expires_at=timezone.now() + AUTH_TOKEN_TTL,
+        )
+        return raw_token, pcp_user
+    else:
+        dermatologist, _ = Dermatologist.objects.get_or_create(login_id=login_id)
+        TabAuthSession.objects.create(
+            dermatologist=dermatologist,
+            token_hash=hash_auth_token(raw_token),
+            expires_at=timezone.now() + AUTH_TOKEN_TTL,
+        )
+        return raw_token, dermatologist
 
 
 def extract_auth_token(request):
@@ -119,7 +133,7 @@ def get_tab_auth_session(request):
         return "", None
 
     tab_session = (
-        TabAuthSession.objects.select_related("dermatologist")
+        TabAuthSession.objects.select_related("dermatologist", "pcp_user")
         .filter(
             token_hash=hash_auth_token(raw_token),
             revoked_at__isnull=True,
@@ -400,18 +414,20 @@ def is_page_complete(annotation, model_key, case_data):
     return True
 
 
-def find_first_incomplete_page(pages, annotations_data, dermatologist):
+def find_first_incomplete_page(pages, annotations_data, evaluator,
+                               annotation_model=Annotation,
+                               evaluator_field="dermatologist"):
     cache = {}
     for pi, (case_id, model_key) in enumerate(pages):
         cache_key = (case_id, model_key or "")
         if cache_key not in cache:
             try:
-                cache[cache_key] = Annotation.objects.get(
-                    dermatologist=dermatologist,
+                cache[cache_key] = annotation_model.objects.get(
+                    **{evaluator_field: evaluator},
                     case_id=case_id,
                     model=model_key or "",
                 )
-            except Annotation.DoesNotExist:
+            except annotation_model.DoesNotExist:
                 cache[cache_key] = None
         case_data = annotations_data.get(case_id, {})
         if not is_page_complete(cache[cache_key], model_key, case_data):
@@ -422,6 +438,25 @@ def find_first_incomplete_page(pages, annotations_data, dermatologist):
 # ---------------------------------------------------------------------------
 # Views
 # ---------------------------------------------------------------------------
+
+def _login_id_exists(login_id):
+    """Check if a login_id is taken in either user table."""
+    return (Dermatologist.objects.filter(login_id=login_id).exists()
+            or PCPUser.objects.filter(login_id=login_id).exists())
+
+
+def _find_existing_user(login_id):
+    """Return (user_obj, role_str) or (None, None)."""
+    try:
+        return Dermatologist.objects.get(login_id=login_id), "Dermatologist"
+    except Dermatologist.DoesNotExist:
+        pass
+    try:
+        return PCPUser.objects.get(login_id=login_id), "PCP"
+    except PCPUser.DoesNotExist:
+        pass
+    return None, None
+
 
 @never_cache
 @csrf_exempt
@@ -460,20 +495,22 @@ def login_view(request):
             if not login_id or not full_name or not occupation or not years_experience or not institution or not dermoscopy_experience or not zip_code:
                 error_message = "All fields are required."
             elif not years_experience.isdigit() or not (0 <= int(years_experience) <= 100):
-                error_message = "Years at this occupation must be a whole number between 0 and 100."
-            elif Dermatologist.objects.filter(login_id=login_id).exists():
+                error_message = "Years at this speciality must be a whole number between 0 and 100."
+            elif _login_id_exists(login_id):
                 error_message = "Username already taken."
             else:
                 from .assignments import assign_cases_for_user
-                # Serialize registrations so concurrent requests don't read
-                # stale lesion counts (the new algorithm is sequential).
+                role = "PCP" if occupation == "PCP" else "Dermatologist"
+                UserModel = PCPUser if role == "PCP" else Dermatologist
+                LockModel = UserModel
+
                 with transaction.atomic():
-                    _lock_qs = (Dermatologist.objects
+                    _lock_qs = (LockModel.objects
                                 .select_for_update()
                                 .order_by("pk")[:1])
-                    list(_lock_qs)  # force evaluation to acquire lock
+                    list(_lock_qs)
 
-                    evaluator = Dermatologist.objects.create(
+                    evaluator = UserModel.objects.create(
                         login_id=login_id,
                         full_name=full_name,
                         occupation=occupation,
@@ -482,8 +519,8 @@ def login_view(request):
                         dermoscopy_experience=dermoscopy_experience,
                         zip_code=zip_code,
                     )
-                    assign_cases_for_user(evaluator)
-                raw_token, _ = create_tab_auth_session(login_id)
+                    assign_cases_for_user(evaluator, role=role)
+                raw_token, _ = create_tab_auth_session(login_id, role=role)
                 return redirect(auth_url("annotations", raw_token))
 
         else:
@@ -495,19 +532,35 @@ def login_view(request):
                     login_id="test",
                     defaults={"full_name": "Test User", "occupation": "Tester", "institution": "Demo"},
                 )
-                assign_cases_for_user(evaluator)
+                assign_cases_for_user(evaluator, role="Dermatologist")
                 Annotation.objects.filter(dermatologist=evaluator).delete()
                 evaluator.current_case_index = 0
                 evaluator.current_model_index = 0
                 evaluator.is_done = False
                 evaluator.save()
-                raw_token, _ = create_tab_auth_session(login_id)
+                raw_token, _ = create_tab_auth_session(login_id, role="Dermatologist")
                 return redirect(auth_url("annotations", raw_token))
-            elif not Dermatologist.objects.filter(login_id=login_id).exists():
-                error_message = "Username not found. Please register first."
+            elif login_id == "test_pcp":
+                from .assignments import assign_cases_for_user
+                evaluator, created = PCPUser.objects.get_or_create(
+                    login_id="test_pcp",
+                    defaults={"full_name": "Test PCP User", "occupation": "PCP", "institution": "Demo"},
+                )
+                assign_cases_for_user(evaluator, role="PCP")
+                PCPAnnotation.objects.filter(pcp_user=evaluator).delete()
+                evaluator.current_case_index = 0
+                evaluator.current_model_index = 0
+                evaluator.is_done = False
+                evaluator.save()
+                raw_token, _ = create_tab_auth_session(login_id, role="PCP")
+                return redirect(auth_url("annotations", raw_token))
             else:
-                raw_token, _ = create_tab_auth_session(login_id)
-                return redirect(auth_url("annotations", raw_token))
+                user_obj, role = _find_existing_user(login_id)
+                if user_obj is None:
+                    error_message = "Username not found. Please register first."
+                else:
+                    raw_token, _ = create_tab_auth_session(login_id, role=role)
+                    return redirect(auth_url("annotations", raw_token))
 
     return render(request, "login.html", {
         "error_message": error_message,
@@ -524,12 +577,19 @@ def annotations_view(request):
     if tab_session is None:
         return redirect("login")
 
-    login_id = tab_session.dermatologist.login_id
+    if tab_session.pcp_user_id:
+        return _pcp_annotations_view(request, raw_token, tab_session)
 
-    annotations_data = load_annotations_data()
+    return _derm_annotations_view(request, raw_token, tab_session)
+
+
+def _derm_annotations_view(request, raw_token, tab_session):
+    """Annotation view for Dermatologist users — all pages are conditional."""
+    login_id = tab_session.dermatologist.login_id
     dermatologist = tab_session.dermatologist
 
-    user_case_ids = get_user_case_ids(dermatologist)
+    annotations_data = load_annotations_data()
+    user_case_ids = get_user_case_ids(dermatologist, role="Dermatologist")
 
     if user_case_ids:
         case_ids = [cid for cid in user_case_ids if cid in annotations_data]
@@ -638,9 +698,6 @@ def annotations_view(request):
             dermatologist.save()
             return redirect(auth_url("annotations", raw_token))
 
-        # Guard: autosave may arrive after a navigation form-submit already
-        # advanced the dermatologist's position.  If the payload's page
-        # identifiers don't match the current page, reject the stale save.
         page_cid = payload.pop("_page_case_id", None)
         page_mk = payload.pop("_page_model_key", None)
         if page_cid is not None and (
@@ -654,8 +711,6 @@ def annotations_view(request):
             annotation, payload, current_model_key, current_case_data,
         )
 
-        # Update completed_at on every POST (autosave, beacon, next, finish)
-        # so accidental exits still get a timestamp from the last save/beacon.
         now_ts = timezone.now().isoformat()
         visits = annotation.page_visits or []
         if visits:
@@ -664,7 +719,6 @@ def annotations_view(request):
 
         annotation.save()
 
-        # Advance navigation
         new_flat = flat_index
         if action == "previous" and flat_index > 0:
             new_flat = flat_index - 1
@@ -732,6 +786,270 @@ def annotations_view(request):
     }
 
     return render(request, "annotations_conditional.html", context)
+
+
+# ---------------------------------------------------------------------------
+# PCP annotation view — first half unconditional, second half conditional
+# ---------------------------------------------------------------------------
+
+def _build_pcp_page_sequence(case_ids, annotations_data):
+    """Build PCP page sequence: first half unconditional, second half conditional.
+
+    Returns list of (case_id, model_key_or_None, interface_type) tuples.
+    model_key is None for unconditional pages.
+    """
+    half = len(case_ids) // 2
+    uncond_ids = case_ids[:half]
+    cond_ids = case_ids[half:]
+
+    pages = []
+    for case_id in uncond_ids:
+        pages.append((case_id, None, "unconditional"))
+
+    for case_id in cond_ids:
+        case_data = annotations_data.get(case_id, {})
+        model_keys = get_model_keys(case_data, case_id)
+        for model_key in model_keys:
+            pages.append((case_id, model_key, "conditional"))
+
+    return pages
+
+
+def _pcp_annotations_view(request, raw_token, tab_session):
+    """Annotation view for PCP users."""
+    pcp_user = tab_session.pcp_user
+    login_id = pcp_user.login_id
+
+    annotations_data = load_annotations_data()
+    user_case_ids = get_user_case_ids(pcp_user, role="PCP")
+
+    if user_case_ids:
+        case_ids = [cid for cid in user_case_ids if cid in annotations_data]
+    else:
+        def natural_key(s):
+            return [int(c) if c.isdigit() else c.lower() for c in re.split(r'(\d+)', s)]
+        case_ids = sorted(annotations_data.keys(), key=natural_key)
+
+    if not case_ids:
+        return render(
+            request,
+            "annotations_conditional.html",
+            {"login_id": login_id, "no_cases": True, "auth_token": raw_token},
+        )
+
+    pages = _build_pcp_page_sequence(case_ids, annotations_data)
+    total_pages = len(pages)
+
+    # ---- Determine current flat page index ----
+    current_case_idx = pcp_user.current_case_index
+    current_model_idx = pcp_user.current_model_index
+    if current_case_idx >= len(case_ids):
+        flat_index = total_pages
+    else:
+        target_case_id = case_ids[current_case_idx]
+        flat_index = 0
+        for pi, (pid, _, _) in enumerate(pages):
+            if pid == target_case_id:
+                flat_index = pi + current_model_idx
+                break
+
+    # ---- Done-confirmation screen ----
+    if flat_index >= total_pages:
+        if request.method == "POST":
+            action = request.POST.get("action")
+
+            if action == "done_yes":
+                pcp_user.is_done = True
+                pcp_user.save()
+                revoke_tab_auth_session(raw_token)
+                return redirect("login")
+
+            if action == "done_no":
+                flat_index = total_pages - 1
+                case_id, model_key, itype = pages[flat_index]
+                ci = case_ids.index(case_id)
+                if model_key is None:
+                    mi = 0
+                else:
+                    case_data = annotations_data[case_id]
+                    mi = get_model_keys(case_data, case_id).index(model_key)
+                pcp_user.current_case_index = ci
+                pcp_user.current_model_index = mi
+                pcp_user.save()
+                return redirect(auth_url("annotations", raw_token, nav=1))
+
+        return render(
+            request,
+            "annotations_conditional.html",
+            {
+                "login_id": login_id,
+                "show_done_confirmation": True,
+                "auth_token": raw_token,
+            },
+        )
+
+    if pcp_user.is_done:
+        revoke_tab_auth_session(raw_token)
+        return redirect("login")
+
+    # ---- Current page data ----
+    flat_index = min(flat_index, total_pages - 1)
+    current_case_id, current_model_key, current_itype = pages[flat_index]
+    current_case_data = annotations_data[current_case_id]
+
+    annotation, _ = PCPAnnotation.objects.get_or_create(
+        pcp_user=pcp_user,
+        case_id=current_case_id,
+        model=current_model_key or "",
+        defaults={"interface_type": current_itype},
+    )
+
+    now = timezone.now()
+    visits = annotation.page_visits or []
+    if request.method == "GET":
+        if not visits or visits[-1]["completed_at"] is not None:
+            visits.append({"entered_at": now.isoformat(), "completed_at": None})
+            annotation.page_visits = visits
+            annotation.save(update_fields=["page_visits"])
+
+    # ---- POST: save annotation ----
+    if request.method == "POST":
+        payload = parse_request_payload(request)
+        action = payload.get("action", "save")
+
+        if action == "reset_all":
+            PCPAnnotation.objects.filter(pcp_user=pcp_user).delete()
+            pcp_user.current_case_index = 0
+            pcp_user.current_model_index = 0
+            pcp_user.is_done = False
+            pcp_user.save()
+            return redirect(auth_url("annotations", raw_token))
+
+        page_cid = payload.pop("_page_case_id", None)
+        page_mk = payload.pop("_page_model_key", None)
+        if page_cid is not None and (
+            page_cid != current_case_id or (page_mk or "") != (current_model_key or "")
+        ):
+            if is_json_request(request):
+                return JsonResponse({"ok": False, "reason": "stale_page"})
+            return redirect(auth_url("annotations", raw_token, nav=1))
+
+        if current_itype == "unconditional":
+            annotation.interface_type = "unconditional"
+            annotation.unconditional_data = {
+                "user_diagnoses": payload.get("user_diagnoses", []),
+                "user_diagnoses_crops": payload.get("user_diagnoses_crops", []),
+                "user_reasons": payload.get("user_reasons", []),
+                "user_reasons_crops": payload.get("user_reasons_crops", []),
+                "other_feedback": payload.get("other_feedback", ""),
+                "other_feedback_crops": payload.get("other_feedback_crops", []),
+            }
+        else:
+            annotation.interface_type = "conditional"
+            update_annotation_conditional(
+                annotation, payload, current_model_key, current_case_data,
+            )
+
+        now_ts = timezone.now().isoformat()
+        visits = annotation.page_visits or []
+        if visits:
+            visits[-1]["completed_at"] = now_ts
+            annotation.page_visits = visits
+
+        annotation.save()
+
+        new_flat = flat_index
+        if action == "previous" and flat_index > 0:
+            new_flat = flat_index - 1
+        elif action == "next" and flat_index < total_pages - 1:
+            new_flat = flat_index + 1
+        elif action == "finish":
+            new_flat = total_pages
+
+        if new_flat >= total_pages:
+            pcp_user.current_case_index = len(case_ids)
+            pcp_user.current_model_index = 0
+        else:
+            nav_case_id, nav_model_key, _ = pages[new_flat]
+            nav_ci = case_ids.index(nav_case_id)
+            if nav_model_key is None:
+                nav_mi = 0
+            else:
+                nav_mi = get_model_keys(
+                    annotations_data[nav_case_id], nav_case_id,
+                ).index(nav_model_key)
+            pcp_user.current_case_index = nav_ci
+            pcp_user.current_model_index = nav_mi
+
+        pcp_user.save()
+
+        if is_json_request(request):
+            return JsonResponse({
+                "ok": True,
+                "action": action,
+                "case_id": current_case_id,
+                "model_key": current_model_key or "",
+                "current_page": new_flat,
+                "annotation_id": annotation.id,
+                "redirect_url": auth_url("annotations", raw_token, nav=1),
+            })
+
+        return redirect(auth_url("annotations", raw_token, nav=1))
+
+    # ---- GET: build template context and choose template ----
+    lesion_id = current_case_id.rsplit("_", 1)[0] if "_" in current_case_id else current_case_id
+    lesion_display_name = f"Lesion {lesion_id}"
+
+    if current_itype == "unconditional":
+        saved_uncond = annotation.unconditional_data or {}
+        context = {
+            "login_id": login_id,
+            "case_id": current_case_id,
+            "lesion_display_name": lesion_display_name,
+            "case_data": current_case_data,
+            "saved_unconditional": saved_uncond,
+            "current_page": flat_index,
+            "total_pages": total_pages,
+            "has_previous": flat_index > 0,
+            "has_next": flat_index < total_pages - 1,
+            "auth_token": raw_token,
+        }
+        return render(request, "annotations_unconditional.html", context)
+    else:
+        current_model_data = (
+            current_case_data.get(current_model_key, {})
+            if current_model_key is not None
+            else {}
+        )
+        of = annotation.other_feedback or _EMPTY_TC
+        saved_model_review = {
+            "diagnosis_feedback": _merge_review_from_fields(annotation),
+            "diagnosis_order": annotation.diagnosis_order or [],
+            "other_feedback": of.get("text", ""),
+            "other_feedback_crops": of.get("crops", []),
+        }
+
+        all_model_keys = get_model_keys(current_case_data, current_case_id)
+        model_num = all_model_keys.index(current_model_key) + 1 if current_model_key in all_model_keys else 1
+        model_display_name = "AI Model " + str(model_num)
+
+        context = {
+            "login_id": login_id,
+            "case_id": current_case_id,
+            "lesion_display_name": lesion_display_name,
+            "case_data": current_case_data,
+            "model_key": current_model_key,
+            "model_display_name": model_display_name,
+            "model_data": current_model_data,
+            "annotation": annotation,
+            "saved_model_review": saved_model_review,
+            "current_page": flat_index,
+            "total_pages": total_pages,
+            "has_previous": flat_index > 0,
+            "has_next": flat_index < total_pages - 1,
+            "auth_token": raw_token,
+        }
+        return render(request, "annotations_conditional.html", context)
 
 
 @never_cache

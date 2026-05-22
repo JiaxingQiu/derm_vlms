@@ -8,12 +8,16 @@ from django.contrib import admin
 from django.http import HttpResponse
 from django.urls import path
 
-from .models import Assignment, Dermatologist, Annotation
+from .models import (
+    Assignment, Dermatologist, Annotation,
+    PCPAnnotation, PCPAssignment, PCPUser,
+)
 from .views import (
     build_page_sequence,
     find_first_incomplete_page,
     get_user_case_ids,
     load_annotations_data,
+    _build_pcp_page_sequence,
 )
 
 
@@ -254,6 +258,220 @@ class DermatologistAdmin(admin.ModelAdmin):
 
 @admin.register(Assignment)
 class AssignmentAdmin(admin.ModelAdmin):
+    list_display = ("evaluator", "order", "case_id")
+    list_filter = ("evaluator",)
+    search_fields = ("evaluator__login_id", "case_id")
+    ordering = ("evaluator", "order")
+
+
+# =========================================================================
+# PCP admin
+# =========================================================================
+
+class PCPAnnotationInline(admin.TabularInline):
+    model = PCPAnnotation
+    extra = 0
+    fields = ("case_id", "model", "interface_type", "created_at", "updated_at")
+    readonly_fields = ("created_at", "updated_at")
+    ordering = ("case_id", "model")
+
+
+class PCPAssignmentInline(admin.TabularInline):
+    model = PCPAssignment
+    extra = 0
+    fields = ("order", "case_id")
+    readonly_fields = ("order", "case_id")
+    ordering = ("order",)
+
+
+@admin.register(PCPAnnotation)
+class PCPAnnotationAdmin(admin.ModelAdmin):
+    list_display = (
+        "pcp_user",
+        "case_id",
+        "model",
+        "interface_type",
+        "short_feedback",
+        "total_duration_display",
+        "updated_at",
+    )
+    list_filter = ("pcp_user", "interface_type")
+    search_fields = ("pcp_user__login_id", "case_id", "model")
+    readonly_fields = ("diagnosis_order", "page_visits", "unconditional_data")
+
+    def short_feedback(self, obj):
+        if obj.interface_type == "unconditional":
+            data = obj.unconditional_data or {}
+            diags = data.get("user_diagnoses", [])
+            filled = sum(1 for d in diags if d and d.strip())
+            return f"{filled}/3 diagnoses" if diags else ""
+        slots = [
+            (obj.diagnosis_1 or {}, obj.reasoning_1 or []),
+            (obj.diagnosis_2 or {}, obj.reasoning_2 or []),
+            (obj.diagnosis_3 or {}, obj.reasoning_3 or []),
+        ]
+        used = [d for d, r in slots if d.get("name") or d.get("label") or r]
+        if not used:
+            return ""
+        reviewed = sum(1 for d in used if d.get("label") in ("correct", "incorrect"))
+        return f"{reviewed}/{len(used)} reviewed"
+    short_feedback.short_description = "feedback"
+
+    def total_duration_display(self, obj):
+        return _format_duration(obj.total_duration_seconds)
+    total_duration_display.short_description = "total duration"
+
+
+@admin.register(PCPUser)
+class PCPUserAdmin(admin.ModelAdmin):
+    list_display = (
+        "login_id",
+        "full_name",
+        "institution",
+        "years_experience",
+        "assignment_count",
+        "progress_display",
+        "registered_at",
+    )
+    search_fields = ("login_id", "full_name", "institution")
+    inlines = [PCPAssignmentInline, PCPAnnotationInline]
+    change_list_template = "admin/dermatology_annotations/pcpuser/change_list.html"
+
+    def assignment_count(self, obj):
+        return obj.assignments.count()
+    assignment_count.short_description = "cases"
+
+    def progress_display(self, obj):
+        annotations_data = load_annotations_data()
+        user_case_ids = get_user_case_ids(obj, role="PCP")
+        if user_case_ids:
+            case_ids = [cid for cid in user_case_ids if cid in annotations_data]
+        else:
+            case_ids = sorted(annotations_data.keys())
+        pages_3col = _build_pcp_page_sequence(case_ids, annotations_data)
+        pages = [(cid, mk) for cid, mk, _ in pages_3col]
+        total = len(pages)
+        if total == 0:
+            return "0 / 0"
+        completed = find_first_incomplete_page(
+            pages, annotations_data, obj,
+            annotation_model=PCPAnnotation, evaluator_field="pcp_user",
+        )
+        return f"{completed} / {total}"
+    progress_display.short_description = "progress"
+
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path(
+                "export-csv/",
+                self.admin_site.admin_view(self.export_pcp_csv_view),
+                name="dermatology_annotations_pcpuser_export_csv",
+            ),
+        ]
+        return custom_urls + urls
+
+    def export_pcp_csv_view(self, request):
+        """Export all PCP annotations as a flat CSV."""
+        response = HttpResponse(content_type="text/csv; charset=utf-8")
+        response["Content-Disposition"] = 'attachment; filename="pcp_annotations_export.csv"'
+        response.write("\ufeff")
+
+        writer = csv.writer(response)
+        writer.writerow([
+            "login_id",
+            "full_name",
+            "occupation",
+            "years_experience",
+            "institution",
+            "dermoscopy_experience",
+            "case_id",
+            "model",
+            "interface_type",
+            "unconditional_data",
+            "raw_response",
+            "diag_1_name", "diag_1_label", "reasoning_1", "diag_1_correct_differential",
+            "diag_2_name", "diag_2_label", "reasoning_2", "diag_2_correct_differential",
+            "diag_3_name", "diag_3_label", "reasoning_3", "diag_3_correct_differential",
+            "diagnosis_order",
+            "other_feedback",
+            "page_visits",
+            "total_duration_seconds",
+            "created_at",
+            "updated_at",
+        ])
+
+        annotations = (
+            PCPAnnotation.objects
+            .select_related("pcp_user")
+            .all()
+            .order_by("pcp_user__login_id", "case_id", "model")
+        )
+
+        for ann in annotations:
+            per_diag_cols = [""] * 12
+            if ann.interface_type == "conditional":
+                slots = [
+                    (ann.diagnosis_1 or {}, ann.reasoning_1 or []),
+                    (ann.diagnosis_2 or {}, ann.reasoning_2 or []),
+                    (ann.diagnosis_3 or {}, ann.reasoning_3 or []),
+                ]
+                for k, (d, r) in enumerate(slots):
+                    label = d.get("label", "") or ""
+                    edits_out = []
+                    for edit in r or []:
+                        original = (edit or {}).get("original", "")
+                        edited = (edit or {}).get("edited", original)
+                        edits_out.append({
+                            "original": original,
+                            "edited": inline_crops(edited, (edit or {}).get("crops", [])),
+                            "edits_made": (edited or "") != (original or ""),
+                        })
+                    correct_diff = d.get("correct_differential", "") or ""
+                    base = k * 4
+                    per_diag_cols[base + 0] = d.get("name", "") or ""
+                    per_diag_cols[base + 1] = label
+                    per_diag_cols[base + 2] = (
+                        json.dumps(edits_out, ensure_ascii=False) if edits_out else ""
+                    )
+                    per_diag_cols[base + 3] = correct_diff
+
+            other_fb_export = inline_tc(ann.other_feedback)
+            order_export = json.dumps(ann.diagnosis_order) if ann.diagnosis_order else ""
+            uncond_export = json.dumps(ann.unconditional_data, ensure_ascii=False) if ann.unconditional_data else ""
+            u = ann.pcp_user
+
+            writer.writerow([
+                u.login_id,
+                u.full_name,
+                u.occupation,
+                u.years_experience if u.years_experience is not None else "",
+                u.institution,
+                u.dermoscopy_experience,
+                ann.case_id,
+                ann.model,
+                ann.interface_type,
+                uncond_export,
+                ann.raw_response,
+                *per_diag_cols,
+                order_export,
+                other_fb_export,
+                json.dumps(ann.page_visits) if ann.page_visits else "",
+                ann.total_duration_seconds if ann.total_duration_seconds is not None else "",
+                ann.created_at,
+                ann.updated_at,
+            ])
+
+        return response
+
+    def changelist_view(self, request, extra_context=None):
+        extra_context = extra_context or {}
+        extra_context["export_csv_url"] = "export-csv/"
+        return super().changelist_view(request, extra_context=extra_context)
+
+
+@admin.register(PCPAssignment)
+class PCPAssignmentAdmin(admin.ModelAdmin):
     list_display = ("evaluator", "order", "case_id")
     list_filter = ("evaluator",)
     search_fields = ("evaluator__login_id", "case_id")

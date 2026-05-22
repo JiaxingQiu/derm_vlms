@@ -85,6 +85,8 @@
 .diag-replacement textarea{width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:.82rem;font-family:inherit;resize:vertical;line-height:1.5;background:#fff;color:#1f2937}
 .diag-replacement textarea:focus{outline:none;border-color:#6b7280;box-shadow:0 0 0 2px rgba(107,114,128,.15)}
 .diag-replacement textarea::placeholder{color:#9ca3af}
+.crop-error{display:none;font-size:.75rem;color:#dc2626;font-weight:500;margin-top:4px}
+.crop-error.show{display:block}
 
 .survey{display:flex;flex-direction:column;gap:10px}
 .survey textarea{width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:.9rem;font-family:inherit;resize:vertical;min-height:60px;line-height:1.5}
@@ -302,6 +304,15 @@
             if (d.deleted) {
                 if (!d.replacement_name.trim()) return false;
                 if (!d.replacement_reason.trim()) return false;
+                var hasCrops = (d.replacement_crops || []).some(function (c) { return !!c; });
+                if (!hasCrops) {
+                    var ta = document.querySelector('textarea[data-kind="replacement"][data-diag-index="' + i + '"]');
+                    if (ta) {
+                        var errEl = ta.parentElement.querySelector('.crop-error');
+                        if (errEl) errEl.classList.add('show');
+                    }
+                    return false;
+                }
             }
         }
         return true;
@@ -783,6 +794,12 @@
             reasonTa.addEventListener('blur', function () {
                 if (_skipNextBlur) { _skipNextBlur = false; return; }
                 deactivateBoxEditor();
+                var errEl = reasonTa.parentElement.querySelector('.crop-error');
+                if (errEl) {
+                    var hasCrops = (diag.replacement_crops || []).some(function (c) { return !!c; });
+                    var hasText = reasonTa.value.trim();
+                    errEl.classList.toggle('show', hasText && !hasCrops);
+                }
             });
             function _repCursorSelectBox() {
                 var pos = reasonTa.selectionStart;
@@ -800,6 +817,11 @@
             reasonTa.addEventListener('click', _repCursorSelectBox);
             reasonTa.addEventListener('keyup', _repCursorSelectBox);
             repDiv.appendChild(reasonTa);
+
+            var cropErr = document.createElement('div');
+            cropErr.className = 'crop-error';
+            cropErr.textContent = 'Please provide at least one visual evidence by cropping.';
+            repDiv.appendChild(cropErr);
 
             repDiv.addEventListener('mouseenter', function () {
                 var crops = diag.replacement_crops || [];

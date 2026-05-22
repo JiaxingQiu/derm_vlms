@@ -51,6 +51,8 @@
 .diag-replacement textarea{width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:.82rem;font-family:inherit;resize:vertical;line-height:1.5;background:#fff;color:#1f2937}
 .diag-replacement textarea:focus{outline:none;border-color:#6b7280;box-shadow:0 0 0 2px rgba(107,114,128,.15)}
 .diag-replacement textarea::placeholder{color:#9ca3af}
+.crop-error{display:none;font-size:.75rem;color:#dc2626;font-weight:500;margin-top:4px}
+.crop-error.show{display:block}
 
 .survey{display:flex;flex-direction:column;gap:10px}
 .survey textarea{width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:.9rem;font-family:inherit;resize:vertical;min-height:60px;line-height:1.5}
@@ -170,14 +172,21 @@
         state.diagnoses.forEach(function (d, i) {
             var nameTa = document.querySelector('textarea.uncond-name-ta[data-diag-index="' + i + '"]');
             var reasonTa = document.querySelector('textarea.uncond-reason-ta[data-diag-index="' + i + '"]');
+            var cropErr = reasonTa ? reasonTa.parentElement.querySelector('.crop-error') : null;
             if (nameTa) { nameTa.style.borderColor = ''; nameTa.style.boxShadow = ''; }
             if (reasonTa) { reasonTa.style.borderColor = ''; reasonTa.style.boxShadow = ''; }
+            if (cropErr) cropErr.classList.remove('show');
             if (!d.name.trim()) {
                 if (nameTa) { nameTa.style.borderColor = '#dc2626'; nameTa.style.boxShadow = '0 0 0 2px rgba(220,38,38,.12)'; }
                 ok = false;
             }
             if (!d.reason.trim()) {
                 if (reasonTa) { reasonTa.style.borderColor = '#dc2626'; reasonTa.style.boxShadow = '0 0 0 2px rgba(220,38,38,.12)'; }
+                ok = false;
+            }
+            var hasCrops = (d.reason_crops || []).some(function (c) { return !!c; });
+            if (!hasCrops) {
+                if (cropErr) cropErr.classList.add('show');
                 ok = false;
             }
         });
@@ -267,6 +276,12 @@
             reasonTa.addEventListener('blur', function () {
                 if (_skipNextBlur) { _skipNextBlur = false; return; }
                 deactivateBoxEditor();
+                var errEl = reasonTa.parentElement.querySelector('.crop-error');
+                if (errEl) {
+                    var hasCrops = (diag.reason_crops || []).some(function (c) { return !!c; });
+                    var hasText = reasonTa.value.trim();
+                    errEl.classList.toggle('show', hasText && !hasCrops);
+                }
             });
             function _cursorSelectBox(ta, dIdx) {
                 return function () {
@@ -287,6 +302,11 @@
             reasonTa.addEventListener('click', selectFn);
             reasonTa.addEventListener('keyup', selectFn);
             repDiv.appendChild(reasonTa);
+
+            var cropErr = document.createElement('div');
+            cropErr.className = 'crop-error';
+            cropErr.textContent = 'Please provide at least one visual evidence by cropping.';
+            repDiv.appendChild(cropErr);
 
             repDiv.addEventListener('mouseenter', function () {
                 var crops = diag.reason_crops || [];

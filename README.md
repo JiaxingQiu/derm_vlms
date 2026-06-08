@@ -2,23 +2,15 @@
 
 Benchmarking dermatology vision-language models on the MIDAS dataset for skin lesion classification (malignant / benign / other).
 
-# Project Structure
+# 1. Project Structure
 
-This project has 3 layers
+This project has 3 layers:
 
-```
-  data_container/
-  website/
-  psql_server/
-```
+- **Azure Blob Storage** — stores model prediction CSVs and lesion images (`results/`). Synced via `upload_to_blob.py` / `download_from_blob.py`. ([tutorial](https://www.youtube.com/watch?v=sEImMaovc1Q))
+- **Django web app** (`revlm_dc/`) — annotation interface hosted on an Azure VM. ([tutorial](https://www.youtube.com/watch?v=nGIg40xs9e4&t=103s))
+- **PostgreSQL** — production database for human annotations, hosted on Azure Database for PostgreSQL. SQLite is used for local development. ([tutorial](https://www.youtube.com/watch?v=HEV1PWycOuQ))
 
-- **Data Container:** Server designed to store large amounts of (un)structured data. In out setup, we use it for storing the annotations from our VLMs. [This](https://www.youtube.com/watch?v=sEImMaovc1Q) tutorial goes through all the components, mainly Storage Accounts and Blob Containers, which are the ones used for our project.
-- **Website:** Developed in Django and hosted in a server (Azure Virtual Machine). Recommended tutorial for Django [here](https://www.youtube.com/watch?v=nGIg40xs9e4&t=103s)
-- **PostgreSQL (PSQL):** Database engine hosted on a separate server (Azure Database for PSQL) for storing our data collected from the website. It's handled through Django, so it helps to understand how to connect the Django app to the PSQL server by checking [this](https://www.youtube.com/watch?v=HEV1PWycOuQ) tutorial. For debugging purposes, feel free to use the default Sqlite. However, you need a PostgreSQL for production as Sqlite is not designed for handling production streams of data.
-
-As a suggestion, go through each tutorial to understand the basics of how to deploy our system as everything is connected for deployment.
-
-# Data Container
+# 2. Data Container
 
 We use a container to easily manage our model annotation data described below
 
@@ -39,102 +31,115 @@ Each model folder contains its own:
 - `utils.py` — model loading and inference functions
 - `notebooks/<name>_predict.ipynb` — prediction notebook
 
-## Inference
+### Inference
 
-You can obtain the predictions from the models by running their corresponding notebooks:
+Each model's `predict_reason.py` (or SLURM job in `jobs/predict_reason/`) runs inference on all MIDAS lesions:
 
 1. Load the shared dataset (`data_share/midas_share.parquet`, 3,357 rows)
-2. Sample 10 lesions (5 malignant + 5 benign, seed=42) that each have both a clinical photo (6in preferred, else 1ft) and a dermoscopic image — via `sample_lesions()` in `data_utils/utils.py`
-3. For each lesion, evaluate three image conditions:
-  - **photo** — clinical photo at 6in or 1ft
-  - **dscope** — dermoscopic image only
-  - **combined** — side-by-side (photo left | dscope right)
-4. For each image condition, ask three prompts:
-  - **describe**: "Describe the lesion in detail."
-  - **classify**: "Is the lesion malignant or benign, or other?"
-  - **describe_then_classify**: both prompts combined
-5. Save results to `results/<model>_predictions_paired.csv` (30 rows per model: 10 lesions × 3 image conditions)
+2. Prepare all lesions via `prepare_all_lesions()` in `data_utils/utils.py` — for each lesion, creates up to 4 image conditions:
+   - **photo** — clinical photo (6in preferred, else 1ft)
+   - **dscope** — dermoscopic image
+   - **combined** — side-by-side (photo left | dscope right), only when both exist
+   - **virtual** — virtual image, when available
+3. Ask a differential-diagnosis prompt: *"Give the top 3 diagnoses in your differential, and provide reasoning for each."*
+4. Save results to `results/<model>_predictions_reason.csv` with checkpointing (safe to resume)
 
-csv columns:
+Output CSV columns:
 
+| Column               | Description                                                               |
+| -------------------- | ------------------------------------------------------------------------- |
+| `id`                 | Row identifier: `{num}_{mode}` (e.g. `1_photo`, `1_dscope`, `1_combined`) |
+| `ground_truth`       | True label (`malignant` / `benign` / `other`)                             |
+| `y16`                | Fine-grained diagnosis label (16 classes)                                 |
+| `y16_description`    | Human-readable description of `y16`                                       |
+| `image_mode`         | Image condition: `photo`, `dscope`, `combined`, or `virtual`              |
+| `reason_classify`    | Model response (top-3 differential with reasoning)                        |
+| `image_path`         | Path to the prepared lesion image                                         |
+| `original_image_name`| Source filename(s) from MIDAS (combined uses `;` separator)               |
+| `lesion_id`          | Lesion identifier                                                         |
 
-| Column                   | Description                                                               |
-| ------------------------ | ------------------------------------------------------------------------- |
-| `id`                     | Row identifier: `{num}_{mode}` (e.g. `1_photo`, `1_dscope`, `1_combined`) |
-| `ground_truth`           | True label (malignant / benign)                                           |
-| `image_mode`             | Image condition: `photo`, `dscope`, or `combined`                         |
-| `describe`               | Model response to the describe prompt                                     |
-| `classify`               | Model response to the classify prompt                                     |
-| `describe_then_classify` | Model response to the combined prompt                                     |
-| `original_image_name`    | Source filename(s) from MIDAS (combined uses `;` separator)               |
-| `lesion_id`              | Integer lesion identifier                                                 |
+### Blob Storage (Upload / Download)
 
+Model outputs and images are stored in Azure Blob Storage so collaborators can sync without zipping files. Both scripts read from `configs/blob_config.yaml` (gitignored — see [New Collaborator Setup](#new-collaborator-setup) for the template).
 
-## Store annotations data
+Upload `results/` to blob:
 
-In case you need to store the annotations, run the following command:
-
-```python
+```bash
 python upload_to_blob.py configs/blob_config.yaml
 ```
 
-The blob scripts use the container SAS URL and SAS token directly for the `model-annotations` container. `blob_prefix` will be the name of the folder within the blob where all the contents of your target folder will be stored.
-For example, if you want to upload a folder `test_folder` to the container with the following structure
+Download from blob to local `results/`:
 
-```
-  test_folder/
-  ├── folder_1/                                
-  ├── folder_2/
-```
-
-You'd have to use the path to `test_folder` for `source_dir` and use the name `test_folder` as your `blob_prefix`. Else, all subfolders will be stored in the container root by default
-
-```yaml
-azure:
-  sas_url: "https://YOUR_ACCOUNT_NAME.blob.core.windows.net/model-annotations"
-  sas_token: "YOUR_SAS_TOKEN"
-
-upload:
-  source_dir: "/absolute/path/to/local/source"
-  container_name: "model-annotations"
-  blob_prefix: "datasets/revlm_dc"
-  overwrite: false
-```
-
-If you are planning to add more annotations while keeping the same folder structure and files, you can use the same instructions as above. 
-
-In case you need to overwrite some files, set the `overwrite` option to `true`.
-
-## Download Annotations Data
-
-Downloading is similar. You first specify the `blob_prefix` of the folder you uploaded, e.g. `test_folder`, and then the `target_dir` where you'll store the contents that reside within `test_folder`. If you don't specify the `test_folder` folder name at the end of your `target_dir`, all the contents will be stored in the local root by default. If your `sas_url` already includes the query string, you can leave `sas_token` as `null`.
-
-```
-  derm_vl
-  ms/results/
-  ├── images/                                # lesion images
-  ├── dermato_llama_predictions_all.csv
-  ├── medgemma_predictions_all.csv
-  └── gpt53_predictions_all.csv
-```
-
-You can download the data from the `model-annotations` container using:
-
-```python
+```bash
 python download_from_blob.py configs/blob_config.yaml
 ```
 
-The script recreates the subfolder structure locally using the blob names under the configured prefix:
+Set `overwrite: true` in the config to replace existing files. By default, existing files are skipped.
+
+# 3. New Collaborator Setup
+
+Follow these steps to set up the project on a new machine. You will need the repo URL and blob storage credentials (shared offline by an existing team member).
+
+**3.1 Clone the repo and install dependencies**
+
+```bash
+git clone <repo-url>
+cd derm_vlms
+pip install -r requirements.txt
+```
+
+**3.2 Create `configs/blob_config.yaml`**
+
+This file is gitignored — each collaborator maintains their own copy with local paths. Create it using the template below and fill in the SAS credentials you received:
 
 ```yaml
+azure:
+  sas_url: "https://dermsac.blob.core.windows.net/model-annotations?<SAS_QUERY_STRING>"
+  sas_token: "<SAS_QUERY_STRING>"
+
+upload:
+  source_dir: "/your/local/path/to/derm_vlms/results/"
+  container_name: "model-annotations"
+  blob_prefix: "datasets/revlm_dc"
+  overwrite: false
+
 download:
   container_name: "model-annotations"
   blob_prefix: "datasets/revlm_dc"
-  target_dir: "/absolute/path/to/local/download"
+  target_dir: "/your/local/path/to/derm_vlms/results"
   overwrite: false
 ```
 
-# Local Deployment
+Replace both path values with your actual local `results/` directory.
+
+**3.3 Download model outputs from blob**
+
+```bash
+python download_from_blob.py configs/blob_config.yaml
+```
+
+This recreates the `results/` folder with all CSVs and images.
+
+**3.4 Set up Django and run the interface**
+
+Follow the [Local Deployment](#local-deployment) steps below. For local development, SQLite is used by default — no PostgreSQL or `.env.production` file is needed. You only need to set a Django secret key:
+
+```bash
+export DJANGO_SECRET_KEY="any-random-string-for-local-dev"
+```
+
+**3.5 Making and sharing changes**
+
+- **Code changes (templates, views, models, etc.):** commit and push via git as usual. If you changed `models.py`, generate migrations first (`python manage.py makemigrations dermatology_annotations`) and commit the migration files.
+- **New or updated model outputs:** after placing new CSVs/images in `results/`, upload to blob so others can pull them:
+
+```bash
+python upload_to_blob.py configs/blob_config.yaml
+```
+
+Other collaborators then run `python download_from_blob.py configs/blob_config.yaml` to sync.
+
+# 4. Local Deployment
 
 ```bash
 conda activate dermato_llama
@@ -181,7 +186,7 @@ Then visit [http://localhost:8000/admin/](http://localhost:8000/admin/). The adm
 - **User management:** Users register through the web interface (login → "New? Register"). On registration, the system collects name, occupation, institution, and auto-assigns lesions.
 - **Test account:** Log in with username `test` — no registration required. Each login wipes previous annotations and resets to page 1.
 
-# Re-deploying a New Version of the Interface
+# 5. Re-deploying a New Version of the Interface
 
 **Prerequisites (on your dev machine, before pushing):**
 

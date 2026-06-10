@@ -26,6 +26,7 @@ FACTORS = {
 
 DEFAULT_SEED = 42
 DEFAULT_ENABLED_FACTORS = ()
+ANCHOR_LESION = "1025"
 
 # Legacy module-level constants kept for backward compatibility.
 LESIONS_PER_USER = 101
@@ -121,12 +122,21 @@ def _select_lesions_for_user(user_id, eligible_lesions, lesion_counts,
                              min_annotators=MIN_ANNOTATORS,
                              max_annotators=MAX_ANNOTATORS,
                              need_more_cap=NEED_MORE_CAP):
-    """Pick *n* lesions for one user using bucket-based priority sampling."""
+    """Pick *n* lesions for one user using bucket-based priority sampling.
+
+    The anchor lesion (ANCHOR_LESION) is always included first as a
+    warmup/calibration case.  The remaining n-1 slots are filled from
+    the pool excluding the anchor.
+    """
+    has_anchor = ANCHOR_LESION in eligible_lesions
+    pool = [lid for lid in eligible_lesions if lid != ANCHOR_LESION]
+    n_random = (n - 1) if has_anchor else n
+
     need_more = []
     fresh = []
     saturated = []
 
-    for lid in eligible_lesions:
+    for lid in pool:
         c = lesion_counts.get(lid, 0)
         if c == 0:
             fresh.append(lid)
@@ -143,16 +153,20 @@ def _select_lesions_for_user(user_id, eligible_lesions, lesion_counts,
     saturated = _seeded_sort(saturated, "saturated")
 
     selected = []
-    selected.extend(need_more[:min(len(need_more), need_more_cap, n)])
-    remaining = n - len(selected)
+    selected.extend(need_more[:min(len(need_more), need_more_cap, n_random)])
+    remaining = n_random - len(selected)
     if remaining > 0:
         selected.extend(fresh[:remaining])
-    remaining = n - len(selected)
+    remaining = n_random - len(selected)
     if remaining > 0:
         selected.extend(saturated[:remaining])
 
     selected_set = set(selected)
-    return [lid for lid in eligible_lesions if lid in selected_set]
+    ordered = [lid for lid in eligible_lesions if lid in selected_set and lid != ANCHOR_LESION]
+
+    if has_anchor:
+        return [ANCHOR_LESION] + ordered
+    return ordered
 
 
 def build_case_list_for_user(user_id, eligible_lesions, lesion_counts,

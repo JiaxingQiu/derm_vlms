@@ -156,6 +156,20 @@
     occupationEl.addEventListener('change', syncPracticeSetting);
     settingSelect.addEventListener('change', syncInstitutionBox);
     syncPracticeSetting();
+
+    var savedInst = instHidden.value;
+    if (savedInst) {
+        var colonIdx = savedInst.indexOf(': ');
+        var cat = colonIdx > -1 ? savedInst.substring(0, colonIdx) : savedInst;
+        var detail = colonIdx > -1 ? savedInst.substring(colonIdx + 2) : '';
+        for (var i = 0; i < settingSelect.options.length; i++) {
+            if (settingSelect.options[i].value === cat) {
+                settingSelect.value = cat;
+                break;
+            }
+        }
+        if (detail) instDetail.value = detail;
+    }
     syncInstitutionBox();
 
     var yrsEl = document.getElementById('years_experience');

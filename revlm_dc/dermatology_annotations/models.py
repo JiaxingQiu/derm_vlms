@@ -103,6 +103,9 @@ class Annotation(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    # --- Completeness ---
+    marked_complete = models.BooleanField(default=False)
+
     # --- Timing ---
     # Full visit history: [{"entered_at": iso, "completed_at": iso|null}, ...]
     page_visits = models.JSONField(default=list, blank=True)
@@ -254,6 +257,8 @@ class PCPAnnotation(models.Model):
     reasoning_3 = models.JSONField(default=list, blank=True)
     other_feedback = models.JSONField(default=_empty_text_crops, blank=True)
     diagnosis_order = models.JSONField(default=list, blank=True)
+
+    marked_complete = models.BooleanField(default=False)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

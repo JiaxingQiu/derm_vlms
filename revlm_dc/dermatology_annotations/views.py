@@ -707,6 +707,13 @@ def _derm_annotations_view(request, raw_token, tab_session):
                 return JsonResponse({"ok": False, "reason": "stale_page"})
             return redirect(auth_url("annotations", raw_token, nav=1))
 
+        if action == "mark_complete":
+            annotation.marked_complete = payload.get("mark_complete_value") == "true"
+            annotation.save(update_fields=["marked_complete", "updated_at"])
+            if is_json_request(request):
+                return JsonResponse({"ok": True, "action": "mark_complete"})
+            return redirect(auth_url("annotations", raw_token, nav=1))
+
         update_annotation_conditional(
             annotation, payload, current_model_key, current_case_data,
         )
@@ -782,6 +789,7 @@ def _derm_annotations_view(request, raw_token, tab_session):
         "total_pages": total_pages,
         "has_previous": flat_index > 0,
         "has_next": flat_index < total_pages - 1,
+        "marked_complete": annotation.marked_complete,
         "auth_token": raw_token,
     }
 
@@ -934,6 +942,13 @@ def _pcp_annotations_view(request, raw_token, tab_session):
                 return JsonResponse({"ok": False, "reason": "stale_page"})
             return redirect(auth_url("annotations", raw_token, nav=1))
 
+        if action == "mark_complete":
+            annotation.marked_complete = payload.get("mark_complete_value") == "true"
+            annotation.save(update_fields=["marked_complete", "updated_at"])
+            if is_json_request(request):
+                return JsonResponse({"ok": True, "action": "mark_complete"})
+            return redirect(auth_url("annotations", raw_token, nav=1))
+
         if current_itype == "unconditional":
             annotation.interface_type = "unconditional"
             user_diagnoses = payload.get("user_diagnoses", [])
@@ -1052,6 +1067,7 @@ def _pcp_annotations_view(request, raw_token, tab_session):
             "total_pages": total_pages,
             "has_previous": flat_index > 0,
             "has_next": flat_index < total_pages - 1,
+            "marked_complete": annotation.marked_complete,
             "auth_token": raw_token,
         }
         return render(request, "annotations_unconditional.html", context)
@@ -1087,6 +1103,7 @@ def _pcp_annotations_view(request, raw_token, tab_session):
             "total_pages": total_pages,
             "has_previous": flat_index > 0,
             "has_next": flat_index < total_pages - 1,
+            "marked_complete": annotation.marked_complete,
             "auth_token": raw_token,
         }
         return render(request, "annotations_conditional.html", context)

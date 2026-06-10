@@ -26,7 +26,6 @@
         <h1>Dermatology VLM Evaluation</h1>
         <span class="header-prompt">{% block header_prompt %}{% endblock %}</span>
         <div class="hctl">
-            <span class="progress" id="progress">Page {{ current_page|add:1 }} / {{ total_pages }}</span>
             <span class="meta-line">{{ login_id }}</span>
             <a href="{% url 'logout' %}?auth={{ auth_token|urlencode }}" class="logout-link">Logout</a>
             <a href="https://www.youtube.com/watch?v=eMlx5fFNoYc" target="_blank" rel="noopener"
@@ -76,8 +75,11 @@
                     {% if has_next %}
                     <button type="button" class="nav-btn" data-action="next">Next &raquo;</button>
                     {% else %}
-                    <button type="button" class="nav-btn" data-action="finish">Finish</button>
+                    <button type="button" class="nav-btn" data-action="finish">Finish All</button>
                     {% endif %}
+                    <button type="button" class="nav-btn {% if marked_complete %}btn-completed{% endif %}" data-action="mark_complete" id="btn-mark-complete">
+                        {% if marked_complete %}&#x2713; Finished{% else %}Finish{% endif %}
+                    </button>
                 </div>
                 <div class="nav-warning" id="nav-warning"></div>
             </div>
@@ -173,9 +175,11 @@ main{max-width:none;margin:0;padding:8px 12px}
 .ev-float-preview{display:none}
 
 .nav{display:flex;justify-content:center;align-items:center;gap:14px;padding:10px 0}
-.nav-btn{padding:9px 26px;border-radius:8px;font-size:.93rem;cursor:pointer;font-weight:500;border:1px solid #d1d5db;background:#fff;color:#374151;transition:all .15s}
+.nav-btn{padding:9px 26px;border-radius:8px;font-size:.93rem;cursor:pointer;font-weight:500;border:1px solid #d1d5db;background:#fff;color:#374151;transition:all .15s;outline:none}
 .nav-btn:hover:not(:disabled){background:#f3f4f6}
 .nav-btn:disabled{opacity:.35;cursor:not-allowed}
+.btn-completed{color:#15803d;border-color:#15803d}
+.btn-completed:hover:not(:disabled){color:#166534;border-color:#166534}
 .nav-center{display:flex;flex-direction:column;align-items:center;gap:2px;min-width:100px}
 .nav-info{font-size:.82rem;color:#6b7280;font-weight:500}
 .status{font-size:.8rem;color:#059669;font-weight:500;min-width:80px;text-align:center;opacity:0;transition:opacity .3s}
@@ -696,7 +700,7 @@ main{max-width:none;margin:0;padding:8px 12px}
     var saveTimer;
     function showSaved(msg) {
         var el = document.getElementById('status');
-        el.textContent = msg || '\u2713 Saved';
+        el.textContent = msg || 'Saved';
         el.classList.add('show');
         clearTimeout(saveTimer);
         saveTimer = setTimeout(function () { el.classList.remove('show'); }, 1500);
@@ -829,10 +833,37 @@ main{max-width:none;margin:0;padding:8px 12px}
                 showNavWarning();
                 return;
             }
+            if (action === 'mark_complete') {
+                var mcBtn = document.getElementById('btn-mark-complete');
+                mcBtn.blur();
+                var toggling = mcBtn.classList.contains('btn-completed') ? 'false' : 'true';
+                if (toggling === 'true') {
+                    mcBtn.classList.add('btn-completed');
+                    mcBtn.innerHTML = '&#x2713; Finished';
+                } else {
+                    mcBtn.classList.remove('btn-completed');
+                    mcBtn.textContent = 'Finish';
+                }
+                fetch(window.location.pathname + window.location.search, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Annotation-Auth': _authTokenValue(),
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        action: 'mark_complete',
+                        mark_complete_value: toggling,
+                        _page_case_id: _pageCaseId,
+                        _page_model_key: _pageModelKey
+                    }),
+                    credentials: 'same-origin'
+                }).then(function (resp) {
+                    if (resp && resp.ok) showSaved();
+                });
+                return;
+            }
             syncHiddenPayload();
-            // The form submit itself writes the latest state. Disarm autosave
-            // so neither a pending debounced POST nor the pagehide beacon
-            // races with (or undoes) the navigation submit.
             _autosaveArmed = false;
             if (_autosaveTimer) { clearTimeout(_autosaveTimer); _autosaveTimer = null; }
             actionInputEl.value = action;

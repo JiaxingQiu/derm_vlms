@@ -37,26 +37,28 @@ Each model's `predict_reason.py` (or SLURM job in `jobs/predict_reason/`) runs i
 
 1. Load the shared dataset (`data_share/midas_share.parquet`, 3,357 rows)
 2. Prepare all lesions via `prepare_all_lesions()` in `data_utils/utils.py` — for each lesion, creates up to 4 image conditions:
-   - **photo** — clinical photo (6in preferred, else 1ft)
-   - **dscope** — dermoscopic image
-   - **combined** — side-by-side (photo left | dscope right), only when both exist
-   - **virtual** — virtual image, when available
+  - **photo** — clinical photo (6in preferred, else 1ft)
+  - **dscope** — dermoscopic image
+  - **combined** — side-by-side (photo left | dscope right), only when both exist
+  - **virtual** — virtual image, when available
 3. Ask a differential-diagnosis prompt: *"Give the top 3 diagnoses in your differential, and provide reasoning for each."*
 4. Save results to `results/<model>_predictions_reason.csv` with checkpointing (safe to resume)
 
 Output CSV columns:
 
-| Column               | Description                                                               |
-| -------------------- | ------------------------------------------------------------------------- |
-| `id`                 | Row identifier: `{num}_{mode}` (e.g. `1_photo`, `1_dscope`, `1_combined`) |
-| `ground_truth`       | True label (`malignant` / `benign` / `other`)                             |
-| `y16`                | Fine-grained diagnosis label (16 classes)                                 |
-| `y16_description`    | Human-readable description of `y16`                                       |
-| `image_mode`         | Image condition: `photo`, `dscope`, `combined`, or `virtual`              |
-| `reason_classify`    | Model response (top-3 differential with reasoning)                        |
-| `image_path`         | Path to the prepared lesion image                                         |
-| `original_image_name`| Source filename(s) from MIDAS (combined uses `;` separator)               |
-| `lesion_id`          | Lesion identifier                                                         |
+
+| Column                | Description                                                               |
+| --------------------- | ------------------------------------------------------------------------- |
+| `id`                  | Row identifier: `{num}_{mode}` (e.g. `1_photo`, `1_dscope`, `1_combined`) |
+| `ground_truth`        | True label (`malignant` / `benign` / `other`)                             |
+| `y16`                 | Fine-grained diagnosis label (16 classes)                                 |
+| `y16_description`     | Human-readable description of `y16`                                       |
+| `image_mode`          | Image condition: `photo`, `dscope`, `combined`, or `virtual`              |
+| `reason_classify`     | Model response (top-3 differential with reasoning)                        |
+| `image_path`          | Path to the prepared lesion image                                         |
+| `original_image_name` | Source filename(s) from MIDAS (combined uses `;` separator)               |
+| `lesion_id`           | Lesion identifier                                                         |
+
 
 ### Blob Storage (Upload / Download)
 
@@ -164,7 +166,7 @@ Other collaborators then run `python download_from_blob.py configs/blob_config.y
 
 # 4. Local Deployment and Run
 
-Create conda env if not exist:
+**0. First-time** create conda env if not exist
 
 ```bash
 conda create -n dermato_llama python=3.11 -y
@@ -172,7 +174,7 @@ conda activate dermato_llama
 pip install -r requirements_local.txt
 ```
 
-**First-time data setup (DO NOT RUN unless Joy asks you to)** (run once, or when prediction CSVs change):
+**0. First-time** data setup run once, or when prediction CSVs change
 
 ```bash
 conda activate dermato_llama
@@ -182,7 +184,7 @@ cd ..
 python upload_to_blob.py      # uploads data + images to Azure blob
 ```
 
-**Regular startup** (no data changes):
+**1. Regular startup** (no data changes):
 
 ```bash
 conda activate dermato_llama
@@ -192,12 +194,14 @@ python manage.py migrate
 python manage.py runserver
 ```
 
-| Command | When to run | What it does |
-|---------|-------------|--------------|
-| `parsedata` | Once locally, or when prediction CSVs change | Parse CSVs → `annotations_data.json` + `assignment_slots.json` + images |
-| `makemigrations` | After changing `models.py` | Generate migration files |
-| `migrate` | After `makemigrations`, or on fresh DB | Apply migrations (SQLite locally, PostgreSQL in production) |
-| `runserver` | Every time | Start the Django dev server |
+
+| Command          | When to run                                  | What it does                                                            |
+| ---------------- | -------------------------------------------- | ----------------------------------------------------------------------- |
+| `parsedata`      | Once locally, or when prediction CSVs change | Parse CSVs → `annotations_data.json` + `assignment_slots.json` + images |
+| `makemigrations` | After changing `models.py`                   | Generate migration files                                                |
+| `migrate`        | After `makemigrations`, or on fresh DB       | Apply migrations (SQLite locally, PostgreSQL in production)             |
+| `runserver`      | Every time                                   | Start the Django dev server                                             |
+
 
 ### Notes
 
@@ -208,6 +212,7 @@ python manage.py runserver
 # 5. Re-deploying a New Version of the Interface
 
 **Before pushing**, make sure you've completed the relevant steps in section 4:
+
 - `makemigrations` if `models.py` changed
 - `parsedata` + `upload_to_blob.py` if prediction data changed
 - Verify the interface runs locally with no errors
@@ -250,7 +255,7 @@ python manage.py showmigrations   # check for unapplied migrations (no [X])
 python manage.py migrate          # apply them to PostgreSQL
 ```
 
-**4. Collect static files** (if templates, JS, or CSS changed)
+**(4.) Collect static files** (if templates, JS, or CSS changed)
 
 ```bash
 python manage.py collectstatic --noinput
@@ -263,7 +268,7 @@ sudo systemctl restart revlm_dc
 sudo systemctl status revlm_dc --no-pager
 ```
 
-**6. Reload Nginx** (only if the Nginx config changed)
+**(6.) Reload Nginx** (only if the Nginx config changed)
 
 ```bash
 sudo nginx -t && sudo systemctl reload nginx

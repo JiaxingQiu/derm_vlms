@@ -366,7 +366,7 @@ def update_annotation_conditional(annotation, payload, model_key, case_data):
 
     other_text = payload.get("other_feedback", "")
     other_crops = payload.get("other_feedback_crops", [])
-    if other_text or other_crops:
+    if "other_feedback" in payload or "other_feedback_crops" in payload:
         annotation.other_feedback = _tc(other_text, other_crops)
     elif not (annotation.other_feedback or {}).get("text"):
         annotation.other_feedback = dict(_EMPTY_TC)

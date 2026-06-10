@@ -15,8 +15,6 @@
             <span class="vlm-tag">Model</span> {{ model_display_name }}
         </div>
         <div class="tc">
-            <div class="crop-hint">Use Crop &#x2702; to select a region as evidence for any part of your feedback</div>
-
             <div class="field" id="diag-section">
                 <div class="field-label">AI Diagnoses</div>
                 <div class="diag-list" id="diag-list"></div>
@@ -78,8 +76,8 @@
 .reason-add{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;margin-top:6px;border:1px dashed #d1d5db;border-radius:6px;background:transparent;cursor:pointer;font-size:.72rem;color:#6b7280;transition:all .15s}
 .reason-add:hover{background:#f9fafb;border-color:#9ca3af;color:#374151}
 
-.diag-card-del{padding:3px 10px;border-radius:5px;border:1px solid #fca5a5;background:#fef2f2;color:#b91c1c;font-size:.72rem;font-weight:600;cursor:pointer;white-space:nowrap;transition:all .15s;flex-shrink:0}
-.diag-card-del:hover{background:#fee2e2;border-color:#f87171;color:#991b1b}
+.diag-card-del{padding:3px 10px;border-radius:5px;border:1px solid #d1d5db;background:#fff;color:#374151;font-size:.78rem;font-weight:600;cursor:pointer;white-space:nowrap;transition:all .15s;flex-shrink:0;margin-left:6px}
+.diag-card-del:hover{background:#f3f4f6;border-color:#9ca3af}
 
 .diag-replacement{padding:12px;display:flex;flex-direction:column;gap:10px}
 .diag-replacement textarea{width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:.82rem;font-family:inherit;resize:vertical;line-height:1.5;background:#fff;color:#1f2937}
@@ -93,6 +91,7 @@
 .survey textarea:focus{outline:none;border-color:#2563eb;box-shadow:0 0 0 2px rgba(37,99,235,.15)}
 .sortable-ghost .diag-card{opacity:.4;border:2px dashed #94a3b8}
 
+.diag-hint{padding:2px 0;font-size:.82rem;font-weight:600;color:#6b7280;margin:4px 0 2px}
 #vlm-badge{display:flex;align-items:center}
 {% endblock %}
 
@@ -556,9 +555,13 @@
             delSent.title = 'Delete this sentence';
             delSent.addEventListener('mousedown', function (e) { e.preventDefault(); });
             delSent.onclick = function () {
-                edit.edited = '';
-                edit.boxes[0] = null;
-                edit.boxes[1] = null;
+                if (edit.original === 'added') {
+                    diag.reasoning_edits.splice(sIdx, 1);
+                } else {
+                    edit.edited = '';
+                    edit.boxes[0] = null;
+                    edit.boxes[1] = null;
+                }
                 edit.editorOpen = false;
                 deactivateBoxEditor();
                 syncHiddenPayload();
@@ -695,7 +698,7 @@
         // --- Incorrect button (created here, appended into header below) ---
         var cardDel = document.createElement('div');
         cardDel.className = 'diag-card-del';
-        cardDel.textContent = 'Click here if this diagnosis is unreasonable.';
+        cardDel.textContent = 'Click if this differential is incorrect.';
         cardDel.title = 'Mark this diagnosis as incorrect';
         cardDel.addEventListener('mousedown', function (e) { e.stopPropagation(); });
         cardDel.onclick = function (e) {
@@ -921,8 +924,8 @@
 
         if (diag.reasoning_edits.length) {
             var rLabel = document.createElement('div');
-            rLabel.className = 'sub-label';
-            rLabel.textContent = 'Click the AI-generated reasoning below to edit';
+            rLabel.className = 'diag-hint';
+            rLabel.textContent = 'Click to edit AI-generated reasoning and visual evidence.';
             exp.appendChild(rLabel);
 
             var rList = document.createElement('div');

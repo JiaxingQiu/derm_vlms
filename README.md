@@ -139,7 +139,14 @@ python upload_to_blob.py configs/blob_config.yaml
 
 Other collaborators then run `python download_from_blob.py configs/blob_config.yaml` to sync.
 
-# 4. Local Deployment
+# 4. Local Deployment and Run
+
+create conda env if not exist
+```bash
+conda create -n dermato_llama python=3.11 -y
+conda activate dermato_llama
+pip install -r requirements_local.txt
+```
 
 ```bash
 conda activate dermato_llama
@@ -195,7 +202,7 @@ Then visit [http://localhost:8000/admin/](http://localhost:8000/admin/). The adm
 
 ```bash
 cd revlm_dc
-conda activate ...
+conda activate dermato_llama
 python manage.py makemigrations dermatology_annotations
 ```
 

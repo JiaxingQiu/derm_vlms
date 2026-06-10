@@ -76,7 +76,7 @@
 .reason-add{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;margin-top:6px;border:1px dashed #d1d5db;border-radius:6px;background:transparent;cursor:pointer;font-size:.72rem;color:#6b7280;transition:all .15s}
 .reason-add:hover{background:#f9fafb;border-color:#9ca3af;color:#374151}
 
-.diag-card-del{padding:3px 10px;border-radius:5px;border:1px solid #d1d5db;background:#fff;color:#374151;font-size:.78rem;font-weight:600;cursor:pointer;white-space:nowrap;transition:all .15s;flex-shrink:0;margin-left:6px}
+.diag-card-del{padding:3px 10px;border-radius:5px;border:1px solid #d1d5db;background:#fff;color:#374151;font-size:.80rem;font-weight:600;cursor:pointer;white-space:nowrap;transition:all .15s;flex-shrink:0;margin-left:6px}
 .diag-card-del:hover{background:#f3f4f6;border-color:#9ca3af}
 
 .diag-replacement{padding:12px;display:flex;flex-direction:column;gap:10px}
@@ -91,7 +91,7 @@
 .survey textarea:focus{outline:none;border-color:#2563eb;box-shadow:0 0 0 2px rgba(37,99,235,.15)}
 .sortable-ghost .diag-card{opacity:.4;border:2px dashed #94a3b8}
 
-.diag-hint{padding:2px 0;font-size:.82rem;font-weight:600;color:#6b7280;margin:4px 0 2px}
+.diag-hint{padding:4px 0;font-size:.86rem;font-weight:500;color:#6b7280;margin:4px 0 2px}
 #vlm-badge{display:flex;align-items:center}
 {% endblock %}
 
@@ -658,7 +658,7 @@
         var actions = document.createElement('div');
         actions.className = 'reason-actions';
 
-        if (hasChanges) {
+        if (hasChanges && edit.original !== 'added') {
             var btnRevert = document.createElement('button');
             btnRevert.type = 'button';
             btnRevert.className = 'reason-btn revert';
@@ -925,7 +925,7 @@
         if (diag.reasoning_edits.length) {
             var rLabel = document.createElement('div');
             rLabel.className = 'diag-hint';
-            rLabel.textContent = 'Click to edit AI-generated reasoning and visual evidence.';
+            rLabel.innerHTML = 'Click to edit <u>AI-generated reasoning</u> and <u>AI-generated visual groundings</u>.';
             exp.appendChild(rLabel);
 
             var rList = document.createElement('div');

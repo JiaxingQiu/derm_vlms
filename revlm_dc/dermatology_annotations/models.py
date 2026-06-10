@@ -17,6 +17,9 @@ class Dermatologist(models.Model):
     zip_code = models.CharField(max_length=20, default="", blank=True)
     registered_at = models.DateTimeField(auto_now_add=True)
 
+    # --- Assignment ---
+    assignment_slot = models.PositiveIntegerField(null=True, blank=True)
+
     # --- Progress ---
     current_case_index = models.PositiveIntegerField(default=0)
     current_model_index = models.PositiveIntegerField(default=0)
@@ -195,6 +198,8 @@ class PCPUser(models.Model):
     dermoscopy_experience = models.CharField(max_length=50, default="", blank=True)
     zip_code = models.CharField(max_length=20, default="", blank=True)
     registered_at = models.DateTimeField(auto_now_add=True)
+
+    assignment_slot = models.PositiveIntegerField(null=True, blank=True)
 
     current_case_index = models.PositiveIntegerField(default=0)
     current_model_index = models.PositiveIntegerField(default=0)

@@ -1,4 +1,7 @@
-"""Upload a local folder tree to Azure Blob Storage.
+"""Upload local folder trees to Azure Blob Storage.
+
+Supports multiple upload specs via a ``uploads`` list in the YAML config,
+or the legacy single ``upload`` key for backward compatibility.
 
 Usage:
     python upload_to_blob.py
@@ -18,7 +21,7 @@ from azure.storage.blob import ContainerClient
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Upload a local folder to Azure Blob Storage while preserving its structure."
+        description="Upload local folders to Azure Blob Storage while preserving structure."
     )
     parser.add_argument(
         "config",
@@ -60,7 +63,7 @@ def build_container_url(sas_url: str, sas_token: str | None, container_name: str
     else:
         if not container_name:
             raise ValueError(
-                "Missing container name. Provide upload.container_name when using an account-level azure.sas_url."
+                "Missing container name. Provide container_name when using an account-level azure.sas_url."
             )
         container_path = f"/{container_name.strip('/')}"
 
@@ -94,21 +97,36 @@ def normalize_prefix(prefix: str) -> str:
     return f"{cleaned}/" if cleaned else ""
 
 
-def upload_folder(config: dict[str, Any]) -> None:
-    upload = config.get("upload", {})
-    if not isinstance(upload, dict):
-        raise ValueError("'upload' must be a mapping in the config file.")
+def get_upload_specs(config: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return a list of upload specs from either ``uploads`` (list) or ``upload`` (single)."""
+    if "uploads" in config:
+        specs = config["uploads"]
+        if not isinstance(specs, list):
+            raise ValueError("'uploads' must be a list in the config file.")
+        return specs
 
-    source_dir = upload.get("source_dir")
-    container_name = upload.get("container_name")
-    blob_prefix = normalize_prefix(upload.get("blob_prefix", ""))
-    overwrite = bool(upload.get("overwrite", False))
+    if "upload" in config:
+        spec = config["upload"]
+        if not isinstance(spec, dict):
+            raise ValueError("'upload' must be a mapping in the config file.")
+        return [spec]
+
+    raise ValueError("Config must contain either 'uploads' (list) or 'upload' (dict).")
+
+
+def upload_one(config: dict[str, Any], spec: dict[str, Any]) -> None:
+    name = spec.get("name", "unnamed")
+    source_dir = spec.get("source_dir")
+    container_name = spec.get("container_name")
+    blob_prefix = normalize_prefix(spec.get("blob_prefix", ""))
+    overwrite = bool(spec.get("overwrite", False))
 
     if not source_dir:
-        raise ValueError("Missing upload.source_dir in config.")
+        raise ValueError(f"Missing source_dir in upload spec '{name}'.")
     source_path = Path(source_dir).expanduser().resolve()
     if not source_path.exists() or not source_path.is_dir():
-        raise ValueError(f"Source directory does not exist: {source_path}")
+        print(f"[SKIP] {name}: source directory does not exist: {source_path}")
+        return
 
     container_client = build_container_client(config, container_name)
     resolved_container_name = container_name or extract_container_name(container_client.url)
@@ -122,25 +140,29 @@ def upload_folder(config: dict[str, Any]) -> None:
 
         if not overwrite and blob_client.exists():
             skipped_count += 1
-            print(f"Skipped existing blob: {resolved_container_name}/{blob_name}")
             continue
 
         with open(file_path, "rb") as data:
             blob_client.upload_blob(data, overwrite=overwrite)
 
         uploaded_count += 1
-        print(f"Uploaded {file_path} -> {resolved_container_name}/{blob_name}")
+        print(f"  [{name}] Uploaded {file_path} -> {resolved_container_name}/{blob_name}")
 
     print(
-        f"Finished upload: {uploaded_count} files uploaded, {skipped_count} files skipped "
-        f"from {source_path} to container '{resolved_container_name}' with prefix '{blob_prefix}'"
+        f"[{name}] {uploaded_count} uploaded, {skipped_count} skipped "
+        f"({source_path} -> {resolved_container_name}/{blob_prefix})"
     )
 
 
 def main() -> None:
     args = parse_args()
     config = load_config(args.config)
-    upload_folder(config)
+    specs = get_upload_specs(config)
+
+    print(f"Found {len(specs)} upload spec(s).\n")
+    for spec in specs:
+        upload_one(config, spec)
+        print()
 
 
 if __name__ == "__main__":

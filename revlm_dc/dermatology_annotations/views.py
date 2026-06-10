@@ -525,7 +525,7 @@ def login_view(request):
             elif _login_id_exists(login_id):
                 error_message = "Username already taken."
             else:
-                from .assignments import assign_cases_for_user
+                from .assignments import next_available_slot, assign_from_slot
                 role = "PCP" if occupation == "PCP" else "Dermatologist"
                 UserModel = PCPUser if role == "PCP" else Dermatologist
                 LockModel = UserModel
@@ -536,6 +536,7 @@ def login_view(request):
                                 .order_by("pk")[:1])
                     list(_lock_qs)
 
+                    slot = next_available_slot(role=role)
                     evaluator = UserModel.objects.create(
                         login_id=login_id,
                         full_name=full_name,
@@ -544,8 +545,9 @@ def login_view(request):
                         institution=institution,
                         dermoscopy_experience=dermoscopy_experience,
                         zip_code=zip_code,
+                        assignment_slot=slot,
                     )
-                    assign_cases_for_user(evaluator, role=role)
+                    assign_from_slot(evaluator, slot, role=role)
                 raw_token, _ = create_tab_auth_session(login_id, role=role)
                 return redirect(auth_url("annotations", raw_token))
 
@@ -553,12 +555,12 @@ def login_view(request):
             if not login_id:
                 error_message = "Please enter your username."
             elif login_id == "test":
-                from .assignments import assign_cases_for_user
+                from .assignments import assign_from_slot
                 evaluator, created = Dermatologist.objects.get_or_create(
                     login_id="test",
                     defaults={"full_name": "Test User", "occupation": "Tester", "institution": "Demo"},
                 )
-                assign_cases_for_user(evaluator, role="Dermatologist")
+                assign_from_slot(evaluator, slot_number=0, role="Dermatologist")
                 Annotation.objects.filter(dermatologist=evaluator).delete()
                 evaluator.current_case_index = 0
                 evaluator.current_model_index = 0
@@ -567,12 +569,12 @@ def login_view(request):
                 raw_token, _ = create_tab_auth_session(login_id, role="Dermatologist")
                 return redirect(auth_url("annotations", raw_token))
             elif login_id == "test_pcp":
-                from .assignments import assign_cases_for_user
+                from .assignments import assign_from_slot
                 evaluator, created = PCPUser.objects.get_or_create(
                     login_id="test_pcp",
                     defaults={"full_name": "Test PCP User", "occupation": "PCP", "institution": "Demo"},
                 )
-                assign_cases_for_user(evaluator, role="PCP")
+                assign_from_slot(evaluator, slot_number=0, role="PCP")
                 PCPAnnotation.objects.filter(pcp_user=evaluator).delete()
                 evaluator.current_case_index = 0
                 evaluator.current_model_index = 0

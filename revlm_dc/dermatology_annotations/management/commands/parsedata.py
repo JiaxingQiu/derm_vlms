@@ -270,6 +270,20 @@ class Command(BaseCommand):
             f"\nCopied {copied} images to {image_dst}"
             + (f" ({skipped} missing)" if skipped else "")
         ))
+        # --- Generate static assignment slots ---
+        from dermatology_annotations.assignments import (
+            generate_all_slots, get_eligible_lesions as _get_eligible,
+            MAX_SLOTS, DEFAULT_SEED,
+        )
+        eligible = _get_eligible(annotations)
+        self.stdout.write(
+            f"\nGenerating assignment slots: {len(eligible)} eligible lesions, "
+            f"{MAX_SLOTS} slots, seed={DEFAULT_SEED}"
+        )
+        slots_path = generate_all_slots(eligible)
         self.stdout.write(self.style.SUCCESS(
-            "\nDone. Run: python manage.py generate_assignments"
+            f"Wrote {slots_path} ({MAX_SLOTS} slots × "
+            f"{len(eligible)} eligible lesions)"
         ))
+
+        self.stdout.write(self.style.SUCCESS("\nDone."))

@@ -1,18 +1,20 @@
-"""RCT case-assignment logic, shared by registration and the management command.
+"""RCT case-assignment logic — static slot-based design.
 
-Each user is assigned a configurable number of lesions per role.  Lesions are
-chosen so that (a) coverage across the full pool is maximised, and (b) any
-lesion seen by more than one user ends up with the target annotator range.
+A fixed pool of 500 "slots" is pre-computed once (by ``parsedata``) and
+written to ``data/assignment_slots.json``.  Each slot contains a
+deterministic list of case_ids.  When a real user registers, they claim
+the next unclaimed slot and its case list is copied into Assignment rows.
 
-Assignment is **sequential**: each new user's selection depends on the counts
-accumulated by all previously registered users.  Reproducibility is
-guaranteed by always processing users in ``registered_at`` order and using
-a deterministic per-user seed.
+The slot file is **idempotent**: re-running generation with the same
+eligible lesions and seed always produces a byte-identical file.
+
+See ``ASSIGNMENT.md`` for the full design rationale.
 """
 
 import hashlib
 import json
 from collections import Counter, defaultdict
+from datetime import datetime, timezone
 from pathlib import Path
 
 from django.conf import settings
@@ -27,8 +29,8 @@ FACTORS = {
 DEFAULT_SEED = 42
 DEFAULT_ENABLED_FACTORS = ()
 ANCHOR_LESION = "1025"
+MAX_SLOTS = 500
 
-# Legacy module-level constants kept for backward compatibility.
 LESIONS_PER_USER = 101
 MIN_ANNOTATORS = 3
 MAX_ANNOTATORS = 5
@@ -284,3 +286,121 @@ def regenerate_all_assignments(evaluators, eligible_lesions, seed=DEFAULT_SEED,
             ])
 
         yield evaluator, case_list
+
+
+# =========================================================================
+# Static slot-based assignment
+# =========================================================================
+
+SLOTS_FILENAME = "assignment_slots.json"
+
+
+def _slots_path():
+    return Path(settings.BASE_DIR) / "data" / SLOTS_FILENAME
+
+
+def generate_all_slots(eligible_lesions, n_slots=MAX_SLOTS,
+                       seed=DEFAULT_SEED,
+                       enabled_factors=DEFAULT_ENABLED_FACTORS,
+                       out_path=None):
+    """Pre-compute *n_slots* deterministic case lists and write to JSON.
+
+    Each slot uses a synthetic user id ``slot_000`` … ``slot_499`` so
+    the output is reproducible regardless of real user names.  Slot 0
+    is reserved for test accounts.
+
+    Returns the path to the written file.
+    """
+    if out_path is None:
+        out_path = _slots_path()
+    out_path = Path(out_path)
+
+    lesion_counts = Counter()
+    slots = []
+
+    for i in range(n_slots):
+        user_id = f"slot_{i:03d}"
+        cfg = ROLE_CONFIG["Dermatologist"]
+
+        case_list, _ = build_case_list_for_user(
+            user_id, eligible_lesions, lesion_counts,
+            seed, cfg["lesions_per_user"], enabled_factors,
+            cfg["min_annotators"], cfg["max_annotators"],
+            cfg["need_more_cap"],
+        )
+
+        for _order, case_id in case_list:
+            lid = case_id.rsplit("_", 1)[0]
+            lesion_counts[lid] += 1
+
+        slots.append({
+            "slot": i,
+            "case_ids": [cid for _order, cid in case_list],
+        })
+
+    payload = {
+        "seed": seed,
+        "n_slots": n_slots,
+        "eligible_lesion_count": len(eligible_lesions),
+        "cases_per_slot": cfg["lesions_per_user"],
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "slots": slots,
+    }
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(out_path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2, ensure_ascii=False)
+
+    return out_path
+
+
+def load_assignment_slots(path=None):
+    """Load the pre-computed slot file.  Returns the full dict."""
+    if path is None:
+        path = _slots_path()
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def next_available_slot(role="Dermatologist"):
+    """Return the lowest slot number not yet claimed by any user.
+
+    Reads the ``assignment_slot`` field from the user table.
+    """
+    from .models import Dermatologist, PCPUser
+    UserModel = PCPUser if role == "PCP" else Dermatologist
+    used = set(
+        UserModel.objects
+        .exclude(assignment_slot__isnull=True)
+        .values_list("assignment_slot", flat=True)
+    )
+    slots_data = load_assignment_slots()
+    for entry in slots_data["slots"]:
+        if entry["slot"] not in used:
+            return entry["slot"]
+    raise RuntimeError(
+        f"All {slots_data['n_slots']} assignment slots are claimed for {role}. "
+        "Generate more slots or increase MAX_SLOTS."
+    )
+
+
+def assign_from_slot(evaluator, slot_number, role="Dermatologist"):
+    """Write Assignment rows for *evaluator* using a pre-computed slot.
+
+    This is the **only** way real users get assignments at registration.
+    It reads from the static JSON file and never recomputes anything.
+    """
+    AssignmentModel = _get_assignment_model(role)
+    slots_data = load_assignment_slots()
+
+    slot_entry = slots_data["slots"][slot_number]
+    assert slot_entry["slot"] == slot_number
+
+    AssignmentModel.objects.filter(evaluator=evaluator).delete()
+    AssignmentModel.objects.bulk_create([
+        AssignmentModel(evaluator=evaluator, case_id=case_id, order=order)
+        for order, case_id in enumerate(slot_entry["case_ids"])
+    ])
+
+    evaluator.assignment_slot = slot_number
+    evaluator.save(update_fields=["assignment_slot"])

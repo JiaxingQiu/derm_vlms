@@ -60,21 +60,27 @@ Output CSV columns:
 
 ### Blob Storage (Upload / Download)
 
-Model outputs and images are stored in Azure Blob Storage so collaborators can sync without zipping files. Both scripts read from `configs/blob_config.yaml` (gitignored — see [New Collaborator Setup](#new-collaborator-setup) for the template).
+Model outputs, deployment data, and images are stored in Azure Blob Storage so collaborators and the server can sync without zipping files. Both scripts read from `configs/blob_config.yaml` (gitignored — see [New Collaborator Setup](#new-collaborator-setup) for the template).
 
-Upload `results/` to blob:
+The config supports **multiple upload/download specs** via `uploads` / `downloads` lists:
+
+- **Raw source data** — prediction CSVs and images in `results/`
+- **Deployment data** — `annotations_data.json` and `assignment_slots.json` in `revlm_dc/data/`
+- **Deployment images** — prepared lesion images in `revlm_dc/images/`
+
+Upload all specs to blob:
 
 ```bash
 python upload_to_blob.py configs/blob_config.yaml
 ```
 
-Download from blob to local `results/`:
+Download all specs from blob:
 
 ```bash
 python download_from_blob.py configs/blob_config.yaml
 ```
 
-Set `overwrite: true` in the config to replace existing files. By default, existing files are skipped.
+Set `overwrite: true` per spec to replace existing files. By default, existing files are skipped.
 
 # 3. New Collaborator Setup
 
@@ -97,20 +103,37 @@ azure:
   sas_url: "https://dermsac.blob.core.windows.net/model-annotations?<SAS_QUERY_STRING>"
   sas_token: "<SAS_QUERY_STRING>"
 
-upload:
-  source_dir: "/your/local/path/to/derm_vlms/results/"
-  container_name: "model-annotations"
-  blob_prefix: "datasets/revlm_dc"
-  overwrite: false
+uploads:
+  - name: "raw source data"
+    source_dir: "/your/local/path/to/derm_vlms/results/"
+    container_name: "model-annotations"
+    blob_prefix: "datasets/revlm_dc"
+    overwrite: false
+  - name: "deployment data"
+    source_dir: "/your/local/path/to/derm_vlms/revlm_dc/data/"
+    container_name: "model-annotations"
+    blob_prefix: "deploy/data"
+    overwrite: true
+  - name: "deployment images"
+    source_dir: "/your/local/path/to/derm_vlms/revlm_dc/images/"
+    container_name: "model-annotations"
+    blob_prefix: "deploy/images"
+    overwrite: false
 
-download:
-  container_name: "model-annotations"
-  blob_prefix: "datasets/revlm_dc"
-  target_dir: "/your/local/path/to/derm_vlms/results"
-  overwrite: false
+downloads:
+  - name: "deployment data"
+    container_name: "model-annotations"
+    blob_prefix: "deploy/data"
+    target_dir: "./revlm_dc/data/"
+    overwrite: true
+  - name: "deployment images"
+    container_name: "model-annotations"
+    blob_prefix: "deploy/images"
+    target_dir: "./revlm_dc/images/"
+    overwrite: false
 ```
 
-Replace both path values with your actual local `results/` directory.
+Replace the `source_dir` paths with your actual local directories. The `downloads` section uses relative paths so it works on any machine.
 
 **3.3 Download model outputs from blob**
 
@@ -141,31 +164,42 @@ Other collaborators then run `python download_from_blob.py configs/blob_config.y
 
 # 4. Local Deployment and Run
 
-create conda env if not exist
+Create conda env if not exist:
+
 ```bash
 conda create -n dermato_llama python=3.11 -y
 conda activate dermato_llama
 pip install -r requirements_local.txt
 ```
 
+**First-time data setup (SKIP UNLESS JOY TOLD YOU TO RUN)** (run once, or when prediction CSVs change):
+
+```bash
+conda activate dermato_llama
+cd revlm_dc
+python manage.py parsedata    # parses CSVs → annotations_data.json + assignment_slots.json + images
+cd ..
+python upload_to_blob.py      # uploads data + images to Azure blob
+```
+
+**Regular startup** (no data changes):
+
 ```bash
 conda activate dermato_llama
 cd revlm_dc
 python manage.py makemigrations dermatology_annotations
 python manage.py migrate
-# python manage.py parsedata
-# python manage.py generate_assignments
 python manage.py runserver
 ```
 
+| Step                   | What it does                                                                                                                 |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `makemigrations`       | Generate migration files from `models.py` changes                                                                            |
+| `migrate`              | Apply migrations to the database (SQLite locally, PostgreSQL in production)                                                  |
+| `parsedata`            | Parse prediction CSVs into `data/annotations_data.json`, copy images, and generate `data/assignment_slots.json` (500 slots)  |
+| `runserver`            | Start the Django dev server                                                                                                  |
 
-| Step                   | What it does                                                                                                            |
-| ---------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `makemigrations`       | Generate migration files from `models.py` changes                                                                       |
-| `migrate`              | Apply migrations to the database (SQLite locally, PostgreSQL in production)                                             |
-| `parsedata`            | Parse `results/*_predictions_reason.csv` and `*_viz.csv` into `data/annotations_data.json`, copy images to `images/`    |
-| `generate_assignments` | Assign lesions to all users: 26 shared IRR + 75 random per user (see `assignments.py`). Supports `--users`, `--dry-run` |
-| `runserver`            | Start the Django dev server                                                                                             |
+> **Note:** `generate_assignments` is deprecated. Assignments are now handled via the static slot file generated by `parsedata`. See `revlm_dc/ASSIGNMENT.md` for details.
 
 
 ### Resetting the local database
@@ -190,14 +224,16 @@ Then visit [http://localhost:8000/admin/](http://localhost:8000/admin/). The adm
 
 ### Notes
 
-- **User management:** Users register through the web interface (login → "New? Register"). On registration, the system collects name, occupation, institution, and auto-assigns lesions.
-- **Test account:** Log in with username `test` — no registration required. Each login wipes previous annotations and resets to page 1.
+- **User management:** Users register through the web interface (login → "New? Register"). On registration, the system collects name, occupation, institution, and assigns lesions from the next available pre-computed slot (see `revlm_dc/ASSIGNMENT.md`).
+- **Test account:** Log in with username `test` — no registration required. Each login wipes previous annotations and resets to page 1. Test accounts always use slot 0.
+- **Assignment safety:** Once a user registers, their lesion list is immutable. No server-side command can change it. See `revlm_dc/ASSIGNMENT.md` for the full design.
 
 # 5. Re-deploying a New Version of the Interface
 
 **Prerequisites (on your dev machine, before pushing):**
 
-1. Make sure the interface runs locally with no errors
+1. Make sure the interface runs locally with no errors.
+
 2. Generate migration files if `models.py` changed:
 
 ```bash
@@ -206,14 +242,16 @@ conda activate dermato_llama
 python manage.py makemigrations dermatology_annotations
 ```
 
-1. If new prediction or visual-grounding CSVs were generated, upload them to the blob:
+3. If prediction CSVs or parsing logic changed, re-run the data pipeline and upload:
 
 ```bash
+cd revlm_dc
+python manage.py parsedata    # regenerates annotations_data.json + assignment_slots.json + images
 cd ..
-python upload_to_blob.py configs/blob_config.yaml
+python upload_to_blob.py      # uploads all deployment artifacts to blob
 ```
 
-1. Commit everything including migration files and push:
+4. Commit everything including migration files and push:
 
 ```bash
 git add .
@@ -222,6 +260,8 @@ git push origin <branch-name>
 ```
 
 > **Important:** Never gitignore the `migrations/` folder. Migration files must be committed from dev so the server only applies them — never generates them.
+>
+> **Important:** Never run `parsedata` or `generate_assignments` on the server. All data artifacts are produced locally and uploaded via blob. See `revlm_dc/ASSIGNMENT.md`.
 
 **On the Azure server:**
 
@@ -233,11 +273,13 @@ git pull origin <branch-name>
 conda activate derm_django_env
 ```
 
-**2. Download new data from blob** (if new CSVs were uploaded)
+**2. Download deployment artifacts from blob**
 
 ```bash
 python download_from_blob.py configs/blob_config.yaml
 ```
+
+This pulls `annotations_data.json`, `assignment_slots.json`, and images into `revlm_dc/data/` and `revlm_dc/images/`.
 
 **3. Apply DB migrations**
 
@@ -247,40 +289,26 @@ python manage.py showmigrations   # check for unapplied migrations (no [X])
 python manage.py migrate          # apply them to PostgreSQL
 ```
 
-**4. Re-parse data** (if prediction CSVs or parsing logic changed)
-
-```bash
-python manage.py parsedata
-```
-
-**5. Regenerate assignments** (if assignment logic, lesion counts, or user list changed)
-
-```bash
-python manage.py generate_assignments
-```
-
-This uses defaults from `assignments.py` (`IRR_COUNT=26` shared lesions + `RANDOM_COUNT=75` per-user random lesions = 101 total). Use `--users alice bob` to target specific users, or `--dry-run` to preview without writing.
-
-**6. Collect static files** (if templates, JS, or CSS changed)
+**4. Collect static files** (if templates, JS, or CSS changed)
 
 ```bash
 python manage.py collectstatic --noinput
 ```
 
-**7. Restart the app service**
+**5. Restart the app service**
 
 ```bash
 sudo systemctl restart revlm_dc
 sudo systemctl status revlm_dc --no-pager
 ```
 
-**8. Reload Nginx** (only if the Nginx config changed)
+**6. Reload Nginx** (only if the Nginx config changed)
 
 ```bash
 sudo nginx -t && sudo systemctl reload nginx
 ```
 
-**9. Verify**
+**7. Verify**
 
 Visit [http://20.246.91.185](http://20.246.91.185) and test the interface. If something goes wrong:
 

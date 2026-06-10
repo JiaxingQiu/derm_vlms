@@ -1,4 +1,7 @@
-"""Download a blob prefix from Azure Blob Storage into a local folder.
+"""Download blob prefixes from Azure Blob Storage into local folders.
+
+Supports multiple download specs via a ``downloads`` list in the YAML config,
+or the legacy single ``download`` key for backward compatibility.
 
 Usage:
     python download_from_blob.py
@@ -60,7 +63,7 @@ def build_container_url(sas_url: str, sas_token: str | None, container_name: str
     else:
         if not container_name:
             raise ValueError(
-                "Missing container name. Provide download.container_name when using an account-level azure.sas_url."
+                "Missing container name. Provide container_name when using an account-level azure.sas_url."
             )
         container_path = f"/{container_name.strip('/')}"
 
@@ -94,18 +97,32 @@ def relative_blob_name(blob_name: str, blob_prefix: str) -> str:
     return blob_name
 
 
-def download_folder(config: dict[str, Any]) -> None:
-    download = config.get("download", {})
-    if not isinstance(download, dict):
-        raise ValueError("'download' must be a mapping in the config file.")
+def get_download_specs(config: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return a list of download specs from either ``downloads`` (list) or ``download`` (single)."""
+    if "downloads" in config:
+        specs = config["downloads"]
+        if not isinstance(specs, list):
+            raise ValueError("'downloads' must be a list in the config file.")
+        return specs
 
-    container_name = download.get("container_name")
-    blob_prefix = normalize_prefix(download.get("blob_prefix", ""))
-    target_dir = download.get("target_dir")
-    overwrite = bool(download.get("overwrite", False))
+    if "download" in config:
+        spec = config["download"]
+        if not isinstance(spec, dict):
+            raise ValueError("'download' must be a mapping in the config file.")
+        return [spec]
+
+    raise ValueError("Config must contain either 'downloads' (list) or 'download' (dict).")
+
+
+def download_one(config: dict[str, Any], spec: dict[str, Any]) -> None:
+    name = spec.get("name", "unnamed")
+    container_name = spec.get("container_name")
+    blob_prefix = normalize_prefix(spec.get("blob_prefix", ""))
+    target_dir = spec.get("target_dir")
+    overwrite = bool(spec.get("overwrite", False))
 
     if not target_dir:
-        raise ValueError("Missing download.target_dir in config.")
+        raise ValueError(f"Missing target_dir in download spec '{name}'.")
 
     target_path = Path(target_dir).expanduser().resolve()
     target_path.mkdir(parents=True, exist_ok=True)
@@ -114,17 +131,18 @@ def download_folder(config: dict[str, Any]) -> None:
     resolved_container_name = container_name or extract_container_name(container_client.url)
 
     downloaded_count = 0
+    skipped_count = 0
     blobs = container_client.list_blobs(name_starts_with=blob_prefix)
     for blob in blobs:
-        relative_name = relative_blob_name(blob.name, blob_prefix)
-        if not relative_name or relative_name.endswith("/"):
+        rel_name = relative_blob_name(blob.name, blob_prefix)
+        if not rel_name or rel_name.endswith("/"):
             continue
 
-        destination = target_path / Path(relative_name)
+        destination = target_path / Path(rel_name)
         destination.parent.mkdir(parents=True, exist_ok=True)
 
         if destination.exists() and not overwrite:
-            print(f"Skipping existing file {destination}")
+            skipped_count += 1
             continue
 
         with open(destination, "wb") as handle:
@@ -132,18 +150,23 @@ def download_folder(config: dict[str, Any]) -> None:
             handle.write(stream.readall())
 
         downloaded_count += 1
-        print(f"Downloaded {resolved_container_name}/{blob.name} -> {destination}")
+        print(f"  [{name}] Downloaded {resolved_container_name}/{blob.name} -> {destination}")
 
     print(
-        f"Finished download: {downloaded_count} files from container "
-        f"'{resolved_container_name}' with prefix '{blob_prefix}' into {target_path}"
+        f"[{name}] {downloaded_count} downloaded, {skipped_count} skipped "
+        f"({resolved_container_name}/{blob_prefix} -> {target_path})"
     )
 
 
 def main() -> None:
     args = parse_args()
     config = load_config(args.config)
-    download_folder(config)
+    specs = get_download_specs(config)
+
+    print(f"Found {len(specs)} download spec(s).\n")
+    for spec in specs:
+        download_one(config, spec)
+        print()
 
 
 if __name__ == "__main__":

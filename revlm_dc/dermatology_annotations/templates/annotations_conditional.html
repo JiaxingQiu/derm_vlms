@@ -5,7 +5,7 @@
 {{ saved_model_review|json_script:"saved-review-data" }}
 {% endblock %}
 
-{% block header_prompt %}Prompt to AI: You are an expert dermatologist. Please give the top 3 diagnoses in your differential, and provide reasoning for each diagnosis{% endblock %}
+{% block header_prompt %}{% endblock %}
 
 {% block right_panel %}
 <div id="review-content" style="position:relative">
@@ -717,7 +717,8 @@
 
             var handle = document.createElement('span');
             handle.className = 'drag-handle';
-            handle.innerHTML = '&#x2630;';
+            handle.innerHTML = '&#x283F;&#x21C5;';
+            handle.title = 'Drag to reorder';
             head.appendChild(handle);
 
             var nameEl = document.createElement('span');
@@ -872,7 +873,8 @@
 
         var handle = document.createElement('span');
         handle.className = 'drag-handle';
-        handle.innerHTML = '&#x2630;';
+        handle.innerHTML = '&#x283F;&#x21C5;';
+        handle.title = 'Drag to reorder';
         head.appendChild(handle);
 
         var nameEl = document.createElement('span');

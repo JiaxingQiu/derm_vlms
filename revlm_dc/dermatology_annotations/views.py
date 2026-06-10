@@ -89,6 +89,12 @@ def parse_request_payload(request):
     if request.POST.get("action"):
         payload["action"] = request.POST.get("action")
 
+    if request.POST.get("target_page") is not None:
+        try:
+            payload["target_page"] = int(request.POST.get("target_page"))
+        except (ValueError, TypeError):
+            pass
+
     return payload
 
 
@@ -389,6 +395,26 @@ def build_page_sequence(case_ids, annotations_data):
         for model_key in model_keys:
             pages.append((case_id, model_key))
     return pages
+
+
+def build_page_list(pages, annotations_data, completion_map):
+    """Build a JSON-serialisable list for the sidebar navigation.
+
+    ``completion_map`` maps ``(case_id, model_key_or_empty)`` → bool.
+    """
+    out = []
+    for i, (case_id, model_key) in enumerate(pages):
+        lesion_id = case_id.rsplit("_", 1)[0] if "_" in case_id else case_id
+        case_data = annotations_data.get(case_id, {})
+        model_keys = get_model_keys(case_data, case_id)
+        model_num = model_keys.index(model_key) + 1 if model_key in model_keys else 1
+        out.append({
+            "idx": i,
+            "lesion": lesion_id,
+            "model": model_num,
+            "done": completion_map.get((case_id, model_key or ""), False),
+        })
+    return out
 
 
 def is_page_complete(annotation, model_key, case_data):
@@ -714,6 +740,17 @@ def _derm_annotations_view(request, raw_token, tab_session):
                 return JsonResponse({"ok": True, "action": "mark_complete"})
             return redirect(auth_url("annotations", raw_token, nav=1))
 
+        if action == "goto":
+            target = payload.get("target_page")
+            if isinstance(target, int) and 0 <= target < total_pages:
+                nav_case_id, nav_model_key = pages[target]
+                nav_ci = case_ids.index(nav_case_id)
+                nav_mi = get_model_keys(annotations_data[nav_case_id], nav_case_id).index(nav_model_key)
+                dermatologist.current_case_index = nav_ci
+                dermatologist.current_model_index = nav_mi
+                dermatologist.save()
+            return redirect(auth_url("annotations", raw_token, nav=1))
+
         update_annotation_conditional(
             annotation, payload, current_model_key, current_case_data,
         )
@@ -775,6 +812,13 @@ def _derm_annotations_view(request, raw_token, tab_session):
     lesion_id = current_case_id.rsplit("_", 1)[0] if "_" in current_case_id else current_case_id
     lesion_display_name = f"Lesion {lesion_id}"
 
+    completion_map = {
+        (a.case_id, a.model): a.marked_complete
+        for a in Annotation.objects.filter(dermatologist=dermatologist)
+                                   .only("case_id", "model", "marked_complete")
+    }
+    page_list = build_page_list(pages, annotations_data, completion_map)
+
     context = {
         "login_id": login_id,
         "case_id": current_case_id,
@@ -790,6 +834,7 @@ def _derm_annotations_view(request, raw_token, tab_session):
         "has_previous": flat_index > 0,
         "has_next": flat_index < total_pages - 1,
         "marked_complete": annotation.marked_complete,
+        "page_list": page_list,
         "auth_token": raw_token,
     }
 
@@ -949,6 +994,22 @@ def _pcp_annotations_view(request, raw_token, tab_session):
                 return JsonResponse({"ok": True, "action": "mark_complete"})
             return redirect(auth_url("annotations", raw_token, nav=1))
 
+        if action == "goto":
+            target = payload.get("target_page")
+            if isinstance(target, int) and 0 <= target < total_pages:
+                nav_case_id, nav_model_key, _ = pages[target]
+                nav_ci = case_ids.index(nav_case_id)
+                if nav_model_key is None:
+                    nav_mi = 0
+                else:
+                    nav_mi = get_model_keys(
+                        annotations_data[nav_case_id], nav_case_id,
+                    ).index(nav_model_key)
+                pcp_user.current_case_index = nav_ci
+                pcp_user.current_model_index = nav_mi
+                pcp_user.save()
+            return redirect(auth_url("annotations", raw_token, nav=1))
+
         if current_itype == "unconditional":
             annotation.interface_type = "unconditional"
             user_diagnoses = payload.get("user_diagnoses", [])
@@ -1033,6 +1094,14 @@ def _pcp_annotations_view(request, raw_token, tab_session):
     lesion_id = current_case_id.rsplit("_", 1)[0] if "_" in current_case_id else current_case_id
     lesion_display_name = f"Lesion {lesion_id}"
 
+    completion_map = {
+        (a.case_id, a.model): a.marked_complete
+        for a in PCPAnnotation.objects.filter(pcp_user=pcp_user)
+                                      .only("case_id", "model", "marked_complete")
+    }
+    pcp_pages_2tuple = [(cid, mk) for cid, mk, _ in pages]
+    page_list = build_page_list(pcp_pages_2tuple, annotations_data, completion_map)
+
     if current_itype == "unconditional":
         user_diagnoses = []
         user_reasons = []
@@ -1068,6 +1137,7 @@ def _pcp_annotations_view(request, raw_token, tab_session):
             "has_previous": flat_index > 0,
             "has_next": flat_index < total_pages - 1,
             "marked_complete": annotation.marked_complete,
+            "page_list": page_list,
             "auth_token": raw_token,
         }
         return render(request, "annotations_unconditional.html", context)
@@ -1104,6 +1174,7 @@ def _pcp_annotations_view(request, raw_token, tab_session):
             "has_previous": flat_index > 0,
             "has_next": flat_index < total_pages - 1,
             "marked_complete": annotation.marked_complete,
+            "page_list": page_list,
             "auth_token": raw_token,
         }
         return render(request, "annotations_conditional.html", context)

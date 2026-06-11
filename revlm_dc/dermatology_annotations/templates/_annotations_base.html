@@ -33,7 +33,7 @@
 
 <div class="anno-shell">
     <header class="anno-header">
-        <button type="button" class="sidebar-toggle" id="sidebar-toggle">&#9776;</button>
+        <button type="button" class="sidebar-toggle" id="sidebar-toggle">&#9776; <span class="sidebar-toggle-label">MENU</span></button>
         <h1>Dermatology VLM Evaluation</h1>
         <span class="header-prompt">{% block header_prompt %}{% endblock %}</span>
         <div class="hctl">
@@ -209,8 +209,9 @@ main{max-width:none;margin:0;padding:8px 12px}
     .img-container{max-height:60vh}
 }
 
-.sidebar-toggle{background:#fff;border:1px solid #d1d5db;font-size:1.5rem;cursor:pointer;color:#374151;padding:4px 10px;border-radius:6px;flex-shrink:0;outline:none;line-height:1;display:flex;align-items:center;justify-content:center}
-.sidebar-toggle:hover{background:#f3f4f6;border-color:#9ca3af}
+.sidebar-toggle{background:#fff;border:none;font-size:1.6rem;cursor:pointer;color:#374151;padding:6px 12px 6px 0;border-radius:6px;flex-shrink:0;outline:none;line-height:1;display:flex;align-items:center;justify-content:center;gap:8px;margin-right:12px;border-right:1px solid #d1d5db;padding-right:14px}
+.sidebar-toggle:hover{background:#f3f4f6}
+.sidebar-toggle-label{font-size:.95rem;font-weight:600;letter-spacing:.08em;color:#374151}
 .sidebar{position:fixed;top:0;left:-320px;width:320px;height:100vh;background:#fff;box-shadow:2px 0 8px rgba(0,0,0,.12);z-index:200;display:flex;flex-direction:column;transition:left .2s ease}
 .sidebar.open{left:0}
 .sidebar-header{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid #e5e7eb}

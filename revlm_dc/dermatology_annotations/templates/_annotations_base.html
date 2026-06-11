@@ -89,7 +89,7 @@
                     <button type="button" class="nav-btn" data-action="finish">Finish All</button>
                     {% endif %}
                     <button type="button" class="nav-btn {% if marked_complete %}btn-completed{% endif %}" data-action="mark_complete" id="btn-mark-complete">
-                        {% if marked_complete %}&#x2713; Finished{% else %}Finish{% endif %}
+                        {% if marked_complete %}&#x2713; Completed{% else %}Complete{% endif %}
                     </button>
                 </div>
                 <div class="nav-warning" id="nav-warning"></div>
@@ -209,8 +209,8 @@ main{max-width:none;margin:0;padding:8px 12px}
     .img-container{max-height:60vh}
 }
 
-.sidebar-toggle{background:none;border:none;font-size:1.6rem;cursor:pointer;color:#374151;padding:2px 8px;border-radius:4px;flex-shrink:0;outline:none;line-height:1;display:flex;align-items:center}
-.sidebar-toggle:hover{background:#f3f4f6}
+.sidebar-toggle{background:#fff;border:1px solid #d1d5db;font-size:1.5rem;cursor:pointer;color:#374151;padding:4px 10px;border-radius:6px;flex-shrink:0;outline:none;line-height:1;display:flex;align-items:center;justify-content:center}
+.sidebar-toggle:hover{background:#f3f4f6;border-color:#9ca3af}
 .sidebar{position:fixed;top:0;left:-320px;width:320px;height:100vh;background:#fff;box-shadow:2px 0 8px rgba(0,0,0,.12);z-index:200;display:flex;flex-direction:column;transition:left .2s ease}
 .sidebar.open{left:0}
 .sidebar-header{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid #e5e7eb}
@@ -870,10 +870,10 @@ main{max-width:none;margin:0;padding:8px 12px}
                 var toggling = mcBtn.classList.contains('btn-completed') ? 'false' : 'true';
                 if (toggling === 'true') {
                     mcBtn.classList.add('btn-completed');
-                    mcBtn.innerHTML = '&#x2713; Finished';
+                    mcBtn.innerHTML = '&#x2713; Completed';
                 } else {
                     mcBtn.classList.remove('btn-completed');
-                    mcBtn.textContent = 'Finish';
+                    mcBtn.textContent = 'Complete';
                 }
                 var sbRow = document.querySelector('.sidebar-row.sb-current .sb-check');
                 if (sbRow) {

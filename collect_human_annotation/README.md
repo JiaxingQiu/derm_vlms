@@ -20,22 +20,26 @@ midas_share.parquet             ← clinical metadata (demographics, pathology, 
 results/images/{case_id}.jpg    ← lesion images (photo, dscope, combined)
 ```
 
-| Source | Granularity | Key | Location |
-|--------|-------------|-----|----------|
-| Admin CSV | 1 row per evaluator × case × model | `case_id` + `model` + `login_id` | Django admin export |
-| Prediction CSVs | 1 row per lesion × image mode | `id` (= `case_id`) | `results/` or blob `datasets/revlm_dc/` |
-| MIDAS parquet | 1 row per image file | `lesion_id` | `data_share/midas_share.parquet` |
-| Images | 1 file per case_id | filename | `results/images/` or blob `deploy/images/` |
+
+| Source          | Granularity                        | Key                              | Location                                   |
+| --------------- | ---------------------------------- | -------------------------------- | ------------------------------------------ |
+| Admin CSV       | 1 row per evaluator × case × model | `case_id` + `model` + `login_id` | Django admin export                        |
+| Prediction CSVs | 1 row per lesion × image mode      | `id` (= `case_id`)               | `results/` or blob `datasets/revlm_dc/`    |
+| MIDAS parquet   | 1 row per image file               | `lesion_id`                      | `data_share/midas_share.parquet`           |
+| Images          | 1 file per case_id                 | filename                         | `results/images/` or blob `deploy/images/` |
+
 
 ---
 
 ## 2. Key Identifiers
 
-| ID | Format | Example | Scope |
-|----|--------|---------|-------|
-| `case_id` | `{num}_{mode}` | `1_photo` | One image condition for one lesion |
-| `lesion_id` | `{patient}_{location}_{control}` | `1_chest_no` | One physical lesion (multiple images) |
-| `id_patient` | integer string | `1` | One patient (multiple lesions) |
+
+| ID           | Format                           | Example      | Scope                                 |
+| ------------ | -------------------------------- | ------------ | ------------------------------------- |
+| `case_id`    | `{num}_{mode}`                   | `1_photo`    | One image condition for one lesion    |
+| `lesion_id`  | `{patient}_{location}_{control}` | `1_chest_no` | One physical lesion (multiple images) |
+| `id_patient` | integer string                   | `1`          | One patient (multiple lesions)        |
+
 
 The numeric prefix in `case_id` is a sequential index over sorted unique `lesion_id` values.
 
@@ -99,12 +103,14 @@ merged.groupby("model")["total_duration_seconds"].describe()
 **Case:** `case_id`, `model`, `raw_response`
 
 **Diagnosis evaluation (×3):**
+
 - `diag_{1,2,3}_name` — AI's diagnosis name
 - `diag_{1,2,3}_label` — human verdict: `correct` | `incorrect` | (empty)
 - `diag_{1,2,3}_correct_differential` — human's replacement (when incorrect)
 - `reasoning_{1,2,3}` — JSON, per-sentence edits to AI reasoning
 
 **Behavioral:**
+
 - `diagnosis_order` — JSON, user reordering of top-3 (empty = accepted AI order)
 - `other_feedback` — free-text
 - `marked_complete` — boolean
@@ -118,8 +124,9 @@ merged.groupby("model")["total_duration_seconds"].describe()
 ```
 res_eng/
 ├── README.md
-├── utils/
-│   ├── __init__.py
-│   └── merge.py        ← load_admin_export, load_predictions_lookup, merge_to_midas, load_merged
-└── test_interface/     ← legacy UI prototypes
+└── utils/
+    ├── __init__.py
+    └── merge.py        ← load_admin_export, load_predictions_lookup, merge_to_midas, load_merged
+
 ```
+

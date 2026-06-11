@@ -26,7 +26,7 @@
         <div class="tc">
             <div class="field-label">Other feedback <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#9ca3af">(optional)</span></div>
             <div class="survey" id="survey">
-                <textarea id="other-feedback" rows="4" placeholder="Other feedback (e.g., additional details?)"></textarea>
+                <textarea id="other-feedback" rows="4" placeholder="e.g., additional details?"></textarea>
                 <div class="field-evidence" id="other-feedback-ev"></div>
             </div>
         </div>
@@ -92,6 +92,7 @@
 .sortable-ghost .diag-card{opacity:.4;border:2px dashed #94a3b8}
 
 .diag-hint{padding:4px 0;font-size:.86rem;font-weight:500;color:#6b7280;margin:4px 0 2px}
+.drag-hint{font-size:.82rem;color:#9ca3af;margin:0 0 -6px 28px}
 #vlm-badge{display:flex;align-items:center}
 {% endblock %}
 
@@ -985,6 +986,10 @@
         } else {
             sectionEl.style.display = '';
             listEl.innerHTML = '';
+            var dragHint = document.createElement('div');
+            dragHint.className = 'drag-hint';
+            dragHint.innerHTML = 'Drag <span style="font-size:1.1em">&#x283F;&#x21C5;</span> to reorder AI-generated differentials.';
+            listEl.appendChild(dragHint);
             state.diagnosis_order.forEach(function (origIdx, rank) {
                 var diag = state.diagnosis_feedback[origIdx];
                 var row = document.createElement('div');

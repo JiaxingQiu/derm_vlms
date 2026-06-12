@@ -7,9 +7,9 @@ Benchmarking dermatology vision-language models on the MIDAS dataset for skin le
 
 | Step | Folder                                                  | What it does                                             | Input                                     | Output                                                               |
 | ---- | ------------------------------------------------------- | -------------------------------------------------------- | ----------------------------------------- | -------------------------------------------------------------------- |
-| 1    | `[data_utils/](data_utils/README.md)`                   | Process raw MIDAS → shared parquet + case mapping        | `data/release_midas.xlsx` + images        | `data_share/midas_share.parquet` + `data_share/case_mapping.parquet` |
-| 2    | `[collect_ai_response/](collect_ai_response/README.md)` | Run VLM inference + visual grounding on all lesions      | `data_share/midas_share.parquet` + images | `results/*_predictions_reason.csv` + `results/images/`               |
-| 2.5  | `[prelim_acc/](prelim_acc/README.md)`                   | Automated accuracy check (top-1/top-3 vs ground truth)   | prediction CSVs                           | accuracy tables                                                      |
+| 1    | [`data_utils/`](data_utils/README.md)                   | Process raw MIDAS → shared parquet + case mapping        | `data/release_midas.xlsx` + images        | `data_share/midas_share.parquet` + `data_share/case_mapping.parquet` |
+| 2    | [`collect_ai_response/`](collect_ai_response/README.md) | Run VLM inference + visual grounding on all lesions      | `data_share/midas_share.parquet` + images | `results/*_predictions_reason.csv` + `results/images/`               |
+| 2.5  | [`prelim_acc/`](prelim_acc/README.md)                   | Automated accuracy check (top-1/top-3 vs ground truth)   | prediction CSVs                           | accuracy tables                                                      |
 | 3    | [`revlm_dc/`](revlm_dc/README.md)                      | Annotation interface (Django) — development + deployment | prediction CSVs + images                  | human annotations (PostgreSQL)                                       |
 
 

@@ -114,7 +114,7 @@ def get_upload_specs(config: dict[str, Any]) -> list[dict[str, Any]]:
     raise ValueError("Config must contain either 'uploads' (list) or 'upload' (dict).")
 
 
-def upload_one(config: dict[str, Any], spec: dict[str, Any]) -> None:
+def upload_one(config: dict[str, Any], spec: dict[str, Any], project_root: Path | None = None) -> None:
     name = spec.get("name", "unnamed")
     source_dir = spec.get("source_dir")
     container_name = spec.get("container_name")
@@ -123,7 +123,10 @@ def upload_one(config: dict[str, Any], spec: dict[str, Any]) -> None:
 
     if not source_dir:
         raise ValueError(f"Missing source_dir in upload spec '{name}'.")
-    source_path = Path(source_dir).expanduser().resolve()
+    source_path = Path(source_dir).expanduser()
+    if not source_path.is_absolute() and project_root:
+        source_path = project_root / source_path
+    source_path = source_path.resolve()
     if not source_path.exists() or not source_path.is_dir():
         print(f"[SKIP] {name}: source directory does not exist: {source_path}")
         return
@@ -159,9 +162,14 @@ def main() -> None:
     config = load_config(args.config)
     specs = get_upload_specs(config)
 
+    if "project_root" in config:
+        project_root = Path(config["project_root"]).expanduser().resolve()
+    else:
+        project_root = Path(args.config).resolve().parent.parent
+
     print(f"Found {len(specs)} upload spec(s).\n")
     for spec in specs:
-        upload_one(config, spec)
+        upload_one(config, spec, project_root)
         print()
 
 

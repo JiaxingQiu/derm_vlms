@@ -114,7 +114,7 @@ def get_download_specs(config: dict[str, Any]) -> list[dict[str, Any]]:
     raise ValueError("Config must contain either 'downloads' (list) or 'download' (dict).")
 
 
-def download_one(config: dict[str, Any], spec: dict[str, Any]) -> None:
+def download_one(config: dict[str, Any], spec: dict[str, Any], project_root: Path | None = None) -> None:
     name = spec.get("name", "unnamed")
     container_name = spec.get("container_name")
     blob_prefix = normalize_prefix(spec.get("blob_prefix", ""))
@@ -124,7 +124,10 @@ def download_one(config: dict[str, Any], spec: dict[str, Any]) -> None:
     if not target_dir:
         raise ValueError(f"Missing target_dir in download spec '{name}'.")
 
-    target_path = Path(target_dir).expanduser().resolve()
+    target_path = Path(target_dir).expanduser()
+    if not target_path.is_absolute() and project_root:
+        target_path = project_root / target_path
+    target_path = target_path.resolve()
     target_path.mkdir(parents=True, exist_ok=True)
 
     container_client = build_container_client(config, container_name)
@@ -163,9 +166,15 @@ def main() -> None:
     config = load_config(args.config)
     specs = get_download_specs(config)
 
+    project_root = None
+    if "project_root" in config:
+        project_root = Path(config["project_root"]).expanduser().resolve()
+    else:
+        project_root = Path(args.config).resolve().parent.parent
+
     print(f"Found {len(specs)} download spec(s).\n")
     for spec in specs:
-        download_one(config, spec)
+        download_one(config, spec, project_root)
         print()
 
 

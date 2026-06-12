@@ -14,8 +14,8 @@ For each combined row in *_predictions_reason_viz.csv, this script:
 Non-combined rows get empty strings for these columns.
 
 Usage:
-    python viz_ground/remap_boxes_to_combined.py                   # all _viz CSVs
-    python viz_ground/remap_boxes_to_combined.py --csv dermato_llama
+    python collect_ai_response/viz_ground/remap_boxes_to_combined.py                   # all _viz CSVs
+    python collect_ai_response/viz_ground/remap_boxes_to_combined.py --csv dermato_llama
 """
 
 import argparse
@@ -26,7 +26,7 @@ import sys
 
 from PIL import Image
 
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 RESULTS_DIR = os.path.join(PROJECT_ROOT, "results")
 IMAGES_DIR = os.path.join(RESULTS_DIR, "images")
 

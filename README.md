@@ -2,87 +2,31 @@
 
 Benchmarking dermatology vision-language models on the MIDAS dataset for skin lesion classification (malignant / benign / other).
 
-# 1. Project Structure
-
-This project has 3 layers:
-
-- **Azure Blob Storage** — stores model prediction CSVs and lesion images (`results/`). Synced via `upload_to_blob.py` / `download_from_blob.py`. ([tutorial](https://www.youtube.com/watch?v=sEImMaovc1Q))
-- **Django web app** (`revlm_dc/`) — annotation interface hosted on an Azure VM. ([tutorial](https://www.youtube.com/watch?v=nGIg40xs9e4&t=103s))
-- **PostgreSQL** — production database for human annotations, hosted on Azure Database for PostgreSQL. SQLite is used for local development. ([tutorial](https://www.youtube.com/watch?v=HEV1PWycOuQ))
-
-# 2. Data Container
-
-We use a container to easily manage our model annotation data described below
+# 1. Pipeline
 
 
-| Folder                               | Model             | Base                                 | Params | Link                                                                                                    |
-| ------------------------------------ | ----------------- | ------------------------------------ | ------ | ------------------------------------------------------------------------------------------------------- |
-| `collect_ai_response/skingpt/`       | SkinGPT-4         | BLIP-2 + LLaMA-2-13B-Chat            | ~14B   | [JoshuaChou2018/SkinGPT-4](https://github.com/JoshuaChou2018/SkinGPT-4)                                 |
-| `collect_ai_response/dermato_llama/` | DermatoLlama      | Llama-3.2-11B-Vision-Instruct + LoRA | ~11B   | [DermaVLM/DermatoLLama-full](https://huggingface.co/DermaVLM/DermatoLLama-full)                         |
-| `collect_ai_response/llava_derm/`    | LLaVA-Dermatology | LLaVA-1.5-7B                         | ~7B    | [Esperanto/llava-dermatology-7b-v1.5-hf](https://huggingface.co/Esperanto/llava-dermatology-7b-v1.5-hf) |
-| `collect_ai_response/medgemma/`      | MedGemma          | MedGemma-1.5-4B-IT                   | ~4B    | [google/medgemma-1.5-4b-it](https://huggingface.co/google/medgemma-1.5-4b-it)                           |
-| `collect_ai_response/gpt53/`         | GPT-5.3           | Azure OpenAI (proprietary)           | —      | Azure `gpt-5.3-chat` deployment                                                                         |
+| Step | Folder                                                  | What it does                                             | Input                                     | Output                                                               |
+| ---- | ------------------------------------------------------- | -------------------------------------------------------- | ----------------------------------------- | -------------------------------------------------------------------- |
+| 1    | `[data_utils/](data_utils/README.md)`                   | Process raw MIDAS → shared parquet + case mapping        | `data/release_midas.xlsx` + images        | `data_share/midas_share.parquet` + `data_share/case_mapping.parquet` |
+| 2    | `[collect_ai_response/](collect_ai_response/README.md)` | Run VLM inference + visual grounding on all lesions      | `data_share/midas_share.parquet` + images | `results/*_predictions_reason.csv` + `results/images/`               |
+| 2.5  | `[prelim_acc/](prelim_acc/README.md)`                   | Automated accuracy check (top-1/top-3 vs ground truth)   | prediction CSVs                           | accuracy tables                                                      |
+| 3    | [`revlm_dc/`](revlm_dc/README.md)                      | Annotation interface (Django) — development + deployment | prediction CSVs + images                  | human annotations (PostgreSQL)                                       |
 
 
-Each model folder contains its own:
+# 2. Infrastructure
 
-- `README.md` — setup instructions and model details
-- `requirements.txt` — Python dependencies
-- `utils.py` — model loading and inference functions
-- `notebooks/<name>_predict.ipynb` — prediction notebook
-
-### Inference
-
-Each model's `predict_reason.py` (or SLURM job in `jobs/predict_reason/`) runs inference on all MIDAS lesions:
-
-1. Load the shared dataset (`data_share/midas_share.parquet`, 3,357 rows)
-2. Prepare all lesions via `prepare_all_lesions()` in `data_utils/utils.py` — for each lesion, creates up to 4 image conditions:
-  - **photo** — clinical photo (6in preferred, else 1ft)
-  - **dscope** — dermoscopic image
-  - **combined** — side-by-side (photo left | dscope right), only when both exist
-  - **virtual** — virtual image, when available
-3. Ask a differential-diagnosis prompt: *"Give the top 3 diagnoses in your differential, and provide reasoning for each."*
-4. Save results to `results/<model>_predictions_reason.csv` with checkpointing (safe to resume)
-
-Output CSV columns:
-
-
-| Column                | Description                                                               |
-| --------------------- | ------------------------------------------------------------------------- |
-| `id`                  | Row identifier: `{num}_{mode}` (e.g. `1_photo`, `1_dscope`, `1_combined`) |
-| `ground_truth`        | True label (`malignant` / `benign` / `other`)                             |
-| `y16`                 | Fine-grained diagnosis label (16 classes)                                 |
-| `y16_description`     | Human-readable description of `y16`                                       |
-| `image_mode`          | Image condition: `photo`, `dscope`, `combined`, or `virtual`              |
-| `reason_classify`     | Model response (top-3 differential with reasoning)                        |
-| `image_path`          | Path to the prepared lesion image                                         |
-| `original_image_name` | Source filename(s) from MIDAS (combined uses `;` separator)               |
-| `lesion_id`           | Lesion identifier                                                         |
-
+- **Azure Blob Storage** — syncs prediction CSVs, images, and deployment data. ([tutorial](https://www.youtube.com/watch?v=sEImMaovc1Q))
+- **Django web app** (`revlm_dc/`) — annotation interface on Azure VM. ([tutorial](https://www.youtube.com/watch?v=nGIg40xs9e4&t=103s))
+- **PostgreSQL** — production DB for annotations. SQLite for local dev. ([tutorial](https://www.youtube.com/watch?v=HEV1PWycOuQ))
 
 ### Blob Storage (Upload / Download)
 
-Model outputs, deployment data, and images are stored in Azure Blob Storage so collaborators and the server can sync without zipping files. Both scripts read from `configs/blob_config.yaml` (gitignored — see [New Collaborator Setup](#new-collaborator-setup) for the template).
-
-The config supports **multiple upload/download specs** via `uploads` / `downloads` lists:
-
-- **Raw source data** — prediction CSVs and images in `results/`
-- **Deployment data** — `annotations_data.json` and `assignment_slots.json` in `revlm_dc/data/`
-- **Deployment images** — prepared lesion images in `revlm_dc/images/`
-
-Upload all specs to blob:
-
 ```bash
 python upload_to_blob.py configs/blob_config.yaml
-```
-
-Download all specs from blob:
-
-```bash
 python download_from_blob.py configs/blob_config.yaml
 ```
 
-Set `overwrite: true` per spec to replace existing files. By default, existing files are skipped.
+Config: `configs/blob_config.yaml` (gitignored — see [New Collaborator Setup](#new-collaborator-setup) for template).
 
 # 3. New Collaborator Setup
 

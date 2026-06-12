@@ -1,13 +1,12 @@
-"""Utilities for visual grounding with Molmo2-O-7B.
+"""Utilities for visual grounding with Qwen3-VL-8B-Instruct.
 
 Provides functions to:
-  - Load the Molmo2-O-7B model
+  - Load the Qwen3-VL model
   - Parse reasoning using the same ``parse_reason_response`` the Django
     interface uses (from ``revlm_dc/dermatology_annotations/parse.py``)
-  - Prompt Molmo2 to predict a bounding box for each reasoning sentence
+  - Prompt Qwen3-VL to predict a bounding box for each reasoning sentence
     **and** each diagnosis name
-  - Parse Molmo2's native <points> coordinate format
-  - Convert between Molmo2's [0-1000] coordinate space and normalized [0-1]
+  - Convert between Qwen3-VL's [0-1000] coordinate space and normalized [0-1]
 """
 
 import json
@@ -20,65 +19,51 @@ import torch
 from PIL import Image
 from transformers import AutoModelForImageTextToText, AutoProcessor
 
-# Molmo2 remote code expects "default" in ROPE_INIT_FUNCTIONS.
-# Patch it in if missing (standard RoPE without scaling).
-try:
-    from transformers.modeling_rope_utils import ROPE_INIT_FUNCTIONS
-    if "default" not in ROPE_INIT_FUNCTIONS:
-        def _compute_default_rope_parameters(config, device=None, seq_len=None, **kwargs):
-            import math
-            base = config.rope_theta
-            dim = int(config.hidden_size // config.num_attention_heads)
-            if hasattr(config, "partial_rotary_factor"):
-                dim = int(dim * config.partial_rotary_factor)
-            inv_freq = 1.0 / (base ** (torch.arange(0, dim, 2, dtype=torch.float32, device=device) / dim))
-            return inv_freq, 1.0
-        ROPE_INIT_FUNCTIONS["default"] = _compute_default_rope_parameters
-except (ImportError, AttributeError):
-    pass
-
 # Re-use the exact parsing logic the Django interface uses so that the
 # sentences we ground are identical to what the annotators see.
-_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 _PARSE_DIR = os.path.join(_PROJECT_ROOT, "revlm_dc", "dermatology_annotations")
 if _PARSE_DIR not in sys.path:
     sys.path.insert(0, _PARSE_DIR)
 from parse import parse_reason_response  # noqa: E402
 
 
-MODEL_ID = "allenai/Molmo2-O-7B"
-MAX_IMAGE_SIDE = 1024
+MODEL_ID = "Qwen/Qwen3-VL-8B-Instruct"
 
-# Molmo2 supports pointing natively, so we ask it to point to the top-left
-# and bottom-right corners of the relevant region.
 GROUNDING_PROMPT_TEMPLATE = (
     "You are examining a dermatological image. A dermatologist provided the "
     "following reasoning sentence about this image:\n\n"
     "\"{sentence}\"\n\n"
-    "Point to the top-left corner and the bottom-right corner of the region "
-    "in the image that this reasoning sentence refers to."
+    "Please locate the region of the image that this reasoning sentence "
+    "refers to. Output ONLY a JSON object with a single key \"bbox_2d\" "
+    "whose value is [x1, y1, x2, y2] in 0-1000 coordinates.\n"
+    "Example: {{\"bbox_2d\": [120, 200, 450, 600]}}"
 )
-
-# Molmo2 outputs: <points coords="idx x y, idx x y"/>  (0-1000 space)
-COORD_REGEX = re.compile(r"<(?:points|tracks)[^>]*coords=\"([0-9\t:;, .]+)\"[^>]*/?>")
-POINTS_REGEX = re.compile(r"(\d+)\s+(\d{2,4})\s+(\d{2,4})")
 
 
 # ---------------------------------------------------------------------------
 # Model loading
 # ---------------------------------------------------------------------------
 
+MAX_IMAGE_SIDE = 1024
+
+
 def load_model(
     model_id: str = MODEL_ID,
     device_map: str = "auto",
     hf_token: Optional[str] = None,
 ):
-    """Load Molmo2-O-7B model and processor. Returns (model, processor)."""
-    kwargs = {"trust_remote_code": True, "dtype": "auto", "device_map": device_map}
+    """Load Qwen3-VL model and processor. Returns (model, processor)."""
+    kwargs = {}
     if hf_token:
         kwargs["token"] = hf_token
 
-    model = AutoModelForImageTextToText.from_pretrained(model_id, **kwargs)
+    model = AutoModelForImageTextToText.from_pretrained(
+        model_id,
+        dtype=torch.bfloat16,
+        device_map=device_map,
+        **kwargs,
+    )
     processor = AutoProcessor.from_pretrained(model_id, **kwargs)
     model.eval()
     n_params = sum(p.numel() for p in model.parameters())
@@ -135,9 +120,9 @@ def predict_grounding_box(
     processor,
     image: Image.Image,
     sentence: str,
-    max_new_tokens: int = 256,
+    max_new_tokens: int = 128,
 ) -> dict | None:
-    """Ask Molmo2 to locate the image region for *sentence*.
+    """Ask Qwen3-VL to locate the image region for *sentence*.
 
     Returns {"x": float, "y": float, "w": float, "h": float} in normalised
     [0, 1] coordinates (matching the frontend grounding_box format), or
@@ -162,8 +147,7 @@ def predict_grounding_box(
         add_generation_prompt=True,
         return_dict=True,
         return_tensors="pt",
-    )
-    inputs = {k: v.to(model.device) for k, v in inputs.items()}
+    ).to(model.device)
 
     input_len = inputs["input_ids"].shape[1]
 
@@ -174,9 +158,7 @@ def predict_grounding_box(
                 max_new_tokens=max_new_tokens,
                 do_sample=False,
             )
-        generated = processor.tokenizer.decode(
-            output_ids[0][input_len:], skip_special_tokens=True,
-        )
+        generated = processor.decode(output_ids[0][input_len:], skip_special_tokens=True)
     except RuntimeError as e:
         if "out of memory" in str(e).lower():
             print(f"[OOM] CUDA OOM during generate, clearing cache")
@@ -187,66 +169,43 @@ def predict_grounding_box(
         del inputs
         torch.cuda.empty_cache()
 
-    return _parse_points_response(generated)
+    return _parse_bbox_response(generated)
 
 
-def _parse_points_response(text: str) -> dict | None:
-    """Extract points from Molmo2's <points> output and derive a bounding box.
+def _parse_bbox_response(text: str) -> dict | None:
+    """Extract [x1,y1,x2,y2] from Qwen3-VL output and convert to {x,y,w,h}.
 
-    Molmo2 outputs coordinates in 0-1000 space via <points coords="..."/>.
-    If two points are found, they are treated as top-left / bottom-right corners.
-    If only one point is found, a default-sized box is centred on it.
+    The model outputs coordinates in 0-1000 space; we normalise to 0-1.
     """
-    points = _extract_points(text)
-    if not points:
-        return None
+    # Try JSON parse first
+    try:
+        obj = json.loads(text.strip())
+        coords = obj.get("bbox_2d")
+        if coords and len(coords) == 4:
+            return _coords_to_xywh(coords)
+    except (json.JSONDecodeError, TypeError):
+        pass
 
-    if len(points) >= 2:
-        xs = [p[0] for p in points]
-        ys = [p[1] for p in points]
-        x1, x2 = min(xs) / 1000.0, max(xs) / 1000.0
-        y1, y2 = min(ys) / 1000.0, max(ys) / 1000.0
-        w = max(x2 - x1, 0.05)
-        h = max(y2 - y1, 0.05)
-        return {
-            "x": round(x1, 4),
-            "y": round(y1, 4),
-            "w": round(w, 4),
-            "h": round(h, 4),
-        }
+    # Fallback: extract any 4-number list with regex
+    match = re.search(r"\[\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\]", text)
+    if match:
+        coords = [int(match.group(i)) for i in range(1, 5)]
+        return _coords_to_xywh(coords)
 
-    # Single point: create a box centred on it
-    cx, cy = points[0][0] / 1000.0, points[0][1] / 1000.0
-    w, h = 0.15, 0.15
-    x = max(cx - w / 2, 0.0)
-    y = max(cy - h / 2, 0.0)
+    return None
+
+
+def _coords_to_xywh(coords: list[int]) -> dict:
+    """Convert [x1,y1,x2,y2] in 0-1000 space to {x,y,w,h} in 0-1 space."""
+    x1, y1, x2, y2 = [c / 1000.0 for c in coords]
+    x1, x2 = min(x1, x2), max(x1, x2)
+    y1, y2 = min(y1, y2), max(y1, y2)
     return {
-        "x": round(x, 4),
-        "y": round(y, 4),
-        "w": round(w, 4),
-        "h": round(h, 4),
+        "x": round(x1, 4),
+        "y": round(y1, 4),
+        "w": round(x2 - x1, 4),
+        "h": round(y2 - y1, 4),
     }
-
-
-def _extract_points(text: str) -> list[tuple[float, float]]:
-    """Pull (x, y) pairs from Molmo2's output text."""
-    points = []
-
-    # Try structured <points coords="..."/> format first
-    for coord_match in COORD_REGEX.finditer(text):
-        for pt in POINTS_REGEX.finditer(coord_match.group(1)):
-            x, y = float(pt.group(2)), float(pt.group(3))
-            points.append((x, y))
-
-    if points:
-        return points
-
-    # Fallback: bare "idx x y" patterns outside tags
-    for pt in POINTS_REGEX.finditer(text):
-        x, y = float(pt.group(2)), float(pt.group(3))
-        points.append((x, y))
-
-    return points
 
 
 # ---------------------------------------------------------------------------
@@ -263,6 +222,7 @@ def ground_reasoning_sentences(
 
     Grounds both diagnosis names and individual reasoning sentences,
     using the same parsing as the Django annotation interface.
+    Resizes the image once and reuses it for all targets.
 
     Returns list of dicts:
         [{"type": "diagnosis"|"sentence", "diagnosis": str,

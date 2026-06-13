@@ -66,7 +66,7 @@ Then commit and push:
 ```bash
 git add .
 git commit -m "description of changes"
-git push origin <branch-name>
+git push origin <your-working-branch-name>
 ```
 
 > **Important:** Never gitignore the `migrations/` folder. Migration files must be committed from dev so the server only applies them.
@@ -79,11 +79,11 @@ git push origin <branch-name>
 
 ```bash
 cd /home/azureuser/derm_vlms
-git pull origin <branch-name>
+git pull origin <your-working-branch-name>
 conda activate derm_django_env
 ```
 
-**2. Download deployment artifacts from blob**
+**(2.) Download deployment artifacts from blob**
 
 ```bash
 python download_from_blob.py configs/blob_config.yaml
@@ -91,7 +91,7 @@ python download_from_blob.py configs/blob_config.yaml
 
 This pulls `annotations_data.json`, `assignment_slots.json`, and images into `revlm_dc/data/` and `revlm_dc/images/`.
 
-**3. Apply DB migrations**
+**(3.) Apply DB migrations**
 
 ```bash
 cd revlm_dc
@@ -118,7 +118,7 @@ sudo systemctl status revlm_dc --no-pager
 sudo nginx -t && sudo systemctl reload nginx
 ```
 
-**7. Verify**
+**(7.) Verify**
 
 Visit [http://20.246.91.185](http://20.246.91.185) and test the interface. If something goes wrong:
 
@@ -128,6 +128,11 @@ sudo tail -f /var/log/nginx/error.log
 ```
 
 ---
+
+**(8.) Admin** [http://20.246.91.185/admin](http://20.246.91.185/admin).
+
+- User: admin
+- Pass: gyfxog-manri5-Juvniq
 
 ## Documentation
 

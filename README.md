@@ -100,7 +100,7 @@ Only needed if working on or testing the interface:
 
 ```bash
 conda activate dermato_llama
-export DJANGO_SECRET_KEY="any-random-string-for-local-dev"
+export DJANGO_SECRET_KEY="any-random-string-for-local-dev" # first time only
 cd revlm_dc
 python manage.py migrate       # first time only
 python manage.py runserver

@@ -91,8 +91,14 @@ def _ground_on_image(client, img_path: str, reason_text: str) -> str:
     return json.dumps(results, separators=(",", ":"))
 
 
-def process(client, csv_path: str, images_dir: str, limit: int | None = None):
-    out_path = csv_path.replace("_predictions_reason.csv", "_predictions_reason_viz_self.csv")
+def process(client, csv_path: str, images_dir: str, limit: int | None = None,
+            start: int | None = None, end: int | None = None, shard: int | None = None):
+    if shard is not None:
+        batch_dir = os.path.join(os.path.dirname(csv_path), "gpt53_viz_ground_batch")
+        os.makedirs(batch_dir, exist_ok=True)
+        out_path = os.path.join(batch_dir, f"shard_{shard}.csv")
+    else:
+        out_path = csv_path.replace("_predictions_reason.csv", "_predictions_reason_viz_self.csv")
 
     df = pd.read_csv(csv_path)
     print(f"\n{'='*60}")
@@ -113,6 +119,13 @@ def process(client, csv_path: str, images_dir: str, limit: int | None = None):
     if not out_df.empty:
         for _, r in out_df.iterrows():
             done_map[r["id"]] = r.to_dict()
+
+    # Slice the dataframe first if start/end specified
+    if start is not None or end is not None:
+        s = start or 0
+        e = end or len(df)
+        df = df.iloc[s:e].reset_index(drop=True)
+        print(f"Row slice: [{s}:{e}] ({len(df)} rows)")
 
     pending_rows = []
     for _, row in df.iterrows():
@@ -264,8 +277,16 @@ def _write_full(done_map: dict[str, dict], input_df: pd.DataFrame, out_path: str
 def main():
     parser = argparse.ArgumentParser(description="GPT-5.3 self-grounding")
     parser.add_argument("--limit", type=int, default=None)
+    parser.add_argument("--start", type=int, default=None,
+                        help="Start row index (0-based, inclusive)")
+    parser.add_argument("--end", type=int, default=None,
+                        help="End row index (exclusive)")
+    parser.add_argument("--shard", type=int, default=None,
+                        help="Shard ID — output goes to _viz_self_{shard}.csv")
     parser.add_argument("--images-dir", type=str, default=IMAGES_DIR)
     parser.add_argument("--results-dir", type=str, default=RESULTS_DIR)
+    parser.add_argument("--merge", action="store_true",
+                        help="Merge all shard CSVs into final _viz_self.csv")
     args = parser.parse_args()
 
     csv_path = os.path.join(args.results_dir, f"{MODEL_NAME}_predictions_reason.csv")
@@ -273,11 +294,47 @@ def main():
         print(f"Not found: {csv_path}")
         sys.exit(1)
 
+    if args.merge:
+        _merge_shards(csv_path, args.results_dir, args.images_dir)
+        return
+
     client = init_client(api_key=AZURE_GPT53_API_KEY)
     print("GPT-5.3 client ready.")
 
-    process(client, csv_path, args.images_dir, limit=args.limit)
+    process(client, csv_path, args.images_dir,
+            limit=args.limit, start=args.start, end=args.end, shard=args.shard)
     print("\nAll done.")
+
+
+def _merge_shards(csv_path: str, results_dir: str, images_dir: str):
+    """Merge all shard CSVs from gpt53_viz_ground_batch/ into a single _viz_self.csv."""
+    import glob as globmod
+
+    batch_dir = os.path.join(results_dir, "gpt53_viz_ground_batch")
+    pattern = os.path.join(batch_dir, "shard_*.csv")
+    shard_files = sorted(globmod.glob(pattern))
+    if not shard_files:
+        print(f"No shard files found matching {pattern}")
+        return
+
+    print(f"Merging {len(shard_files)} shards...")
+    input_df = pd.read_csv(csv_path)
+
+    done_map: dict[str, dict] = {}
+    for sf in shard_files:
+        shard_df = pd.read_csv(sf)
+        for _, r in shard_df.iterrows():
+            row_id = r["id"]
+            if _is_row_done(r):
+                done_map[row_id] = r.to_dict()
+            elif row_id not in done_map:
+                done_map[row_id] = r.to_dict()
+        print(f"  {os.path.basename(sf)}: {len(shard_df)} rows")
+
+    out_path = os.path.join(results_dir, f"{MODEL_NAME}_predictions_reason_viz_self.csv")
+    _write_full(done_map, input_df, out_path)
+    _remap_combined_rows(out_path, images_dir)
+    print(f"Merged → {out_path} ({len(done_map)} rows)")
 
 
 if __name__ == "__main__":

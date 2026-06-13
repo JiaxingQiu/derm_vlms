@@ -17,3 +17,6 @@ python-dotenv
 sqlparse
 azure-storage-blob
 pyyaml
+pyparsing
+kiwisolver
+cycler

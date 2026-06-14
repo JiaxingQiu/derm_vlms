@@ -74,13 +74,12 @@ def judge_prompt(dx, differential="top_1"):
 # =============================================================================
 
 POSTEDIT_HINT_TOP1 = (
-    "\n\nNote: A reviewing expert dermatologist suggests the diagnosis is "
+    "\n\nNote: An expert has confirmed the correct diagnosis is "
     "\"{judge_dx}\" because: {reasoning}"
 )
 
 POSTEDIT_HINT_TOP3 = (
-    "\n\nNote: A reviewing expert dermatologist suggests the following "
-    "corrected differential:\n"
+    "\n\nNote: An expert has confirmed the correct differential is:\n"
     "{corrected_differential}"
 )
 

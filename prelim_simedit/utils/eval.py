@@ -80,6 +80,15 @@ def _parse_numbered_items(text):
     return [m.strip().rstrip(".") for m in matches if m.strip() and len(m.strip()) > 2]
 
 
+_STANDARD_Y16 = {
+    "Actinic Keratosis", "Basal Cell Carcinoma", "Dermatofibroma",
+    "Fibrous Papule", "Hemangioma", "Melanocytic Lesion",
+    "Melanocytic Nevus", "Melanocytic Tumor", "Melanoma",
+    "Seborrheic Keratosis", "Squamous Cell Carcinoma",
+    "Squamous Cell Carcinoma In Situ",
+}
+
+
 def to_y16(dx_text):
     """Map a free-text diagnosis to a y16 label. Unmapped → 'Other'."""
     if not dx_text or not isinstance(dx_text, str):
@@ -87,7 +96,9 @@ def to_y16(dx_text):
     if dx_text.strip().lower() == "other":
         return "Other"
     mapped = match_to_y16(dx_text)
-    return mapped if mapped else "Other"
+    if mapped and mapped in _STANDARD_Y16:
+        return mapped
+    return "Other"
 
 
 def _top3_hit(dx_list, gt_y16):
@@ -100,6 +111,17 @@ def _top3_hit(dx_list, gt_y16):
 def score(df, differential="top_1"):
     """Measure accuracy at each stage (preedit, judge, postedit) against gt_y16."""
     df = df.copy()
+
+    # Normalize GT: anything not in standard y16 set → "Other"
+    _STANDARD_Y16 = {
+        "Actinic Keratosis", "Basal Cell Carcinoma", "Dermatofibroma",
+        "Fibrous Papule", "Hemangioma", "Melanocytic Lesion",
+        "Melanocytic Nevus", "Melanocytic Tumor", "Melanoma",
+        "Seborrheic Keratosis", "Squamous Cell Carcinoma",
+        "Squamous Cell Carcinoma In Situ",
+    }
+    df["gt_y16"] = df["gt_y16"].apply(
+        lambda x: x if x in _STANDARD_Y16 else "Other")
 
     if differential == "top_1":
         if "preedit_dx" not in df.columns or df["preedit_dx"].isna().any():

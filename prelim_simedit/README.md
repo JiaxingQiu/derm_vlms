@@ -53,7 +53,7 @@ N = 10
 python prelim_simedit/run_preedit.py  --robot medgemma --n 10 --differential top_3
 python prelim_simedit/run_judge.py    --robot medgemma --judge gpt53 --differential top_3
 python prelim_simedit/run_postedit.py --robot medgemma --judge gpt53 --differential top_3
-python prelim_simedit/run_eval.py     --robot medgemma --judge gpt53 --differential top_3
+# Eval: run interactively in notebooks/eval_phase12.ipynb
 ```
 
 Each stage is resumable (skips completed case_ids).

@@ -55,6 +55,15 @@ def build_inputs(robot, n=None, seed=42, case_ids=None, image_mode="combined"):
     df = pd.read_csv(csv_path)
     df = df[df["image_mode"] == image_mode].copy()
     df["y16"] = df["y16"].fillna("Other")
+    # Normalize non-standard GT labels to "Other"
+    _STANDARD_Y16 = {
+        "Actinic Keratosis", "Basal Cell Carcinoma", "Dermatofibroma",
+        "Fibrous Papule", "Hemangioma", "Melanocytic Lesion",
+        "Melanocytic Nevus", "Melanocytic Tumor", "Melanoma",
+        "Seborrheic Keratosis", "Squamous Cell Carcinoma",
+        "Squamous Cell Carcinoma In Situ",
+    }
+    df["y16"] = df["y16"].apply(lambda x: x if x in _STANDARD_Y16 else "Other")
     df = df.rename(columns={"id": "case_id"})
 
     # Sort by numeric prefix so "1_combined" < "2_combined" < "10_combined"

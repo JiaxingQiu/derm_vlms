@@ -40,6 +40,7 @@ from util import (
 from tokens import AZURE_GPT53_API_KEY
 
 RESULTS_DIR = os.path.join(PROJECT_ROOT, "results")
+RESULTS_LOCAL_DIR = os.path.join(PROJECT_ROOT, "results_local")
 IMAGES_DIR = os.path.join(RESULTS_DIR, "images")
 CHECKPOINT_EVERY = 10
 MODEL_NAME = "gpt53"
@@ -94,7 +95,7 @@ def _ground_on_image(client, img_path: str, reason_text: str) -> str:
 def process(client, csv_path: str, images_dir: str, limit: int | None = None,
             start: int | None = None, end: int | None = None, shard: int | None = None):
     if shard is not None:
-        batch_dir = os.path.join(os.path.dirname(csv_path), "gpt53_viz_ground_batch")
+        batch_dir = os.path.join(RESULTS_LOCAL_DIR, "gpt53_viz_ground_batch")
         os.makedirs(batch_dir, exist_ok=True)
         out_path = os.path.join(batch_dir, f"shard_{shard}.csv")
     else:
@@ -307,10 +308,10 @@ def main():
 
 
 def _merge_shards(csv_path: str, results_dir: str, images_dir: str):
-    """Merge all shard CSVs from gpt53_viz_ground_batch/ into a single _viz_self.csv."""
+    """Merge all shard CSVs from results_local/gpt53_viz_ground_batch/ into a single _viz_self.csv."""
     import glob as globmod
 
-    batch_dir = os.path.join(results_dir, "gpt53_viz_ground_batch")
+    batch_dir = os.path.join(RESULTS_LOCAL_DIR, "gpt53_viz_ground_batch")
     pattern = os.path.join(batch_dir, "shard_*.csv")
     shard_files = sorted(globmod.glob(pattern))
     if not shard_files:

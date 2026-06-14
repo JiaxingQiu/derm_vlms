@@ -57,7 +57,7 @@ def load_model(
         device_map=device_map,
         **kwargs,
     )
-    processor = AutoProcessor.from_pretrained(model_id, **kwargs)
+    processor = AutoProcessor.from_pretrained(model_id, use_fast=True, **kwargs)
     model.eval()
     n_params = sum(p.numel() for p in model.parameters())
     print(f"Loaded {model_id}  ({n_params:,} params)")
@@ -103,6 +103,32 @@ def parse_reasoning_sentences(reason_text: str) -> list[dict]:
 MAX_ATTEMPTS = 3
 
 
+def preprocess_image_inputs(processor, image: Image.Image, device):
+    """Pre-process image once and return reusable pixel_values tensor.
+
+    Call this once per image, then pass the result to predict_grounding_box
+    for each sentence to avoid redundant image encoding.
+    """
+    image = _resize_image(image)
+    messages = [
+        {
+            "role": "user",
+            "content": [
+                {"type": "image", "image": image},
+                {"type": "text", "text": "x"},
+            ],
+        }
+    ]
+    inputs = processor.apply_chat_template(
+        messages,
+        tokenize=True,
+        add_generation_prompt=True,
+        return_dict=True,
+        return_tensors="pt",
+    ).to(device)
+    return inputs.get("pixel_values"), image
+
+
 def predict_grounding_box(
     model,
     processor,
@@ -110,11 +136,14 @@ def predict_grounding_box(
     sentence: str,
     max_new_tokens: int = 128,
     max_attempts: int = MAX_ATTEMPTS,
+    cached_pixel_values=None,
 ) -> tuple[dict | None, str]:
     """Ask MedGemma to locate the image region for *sentence*.
 
     Retries up to max_attempts times if the response fails to parse.
     On retries, enables sampling (temperature=0.4) to get varied output.
+    If cached_pixel_values is provided, reuses pre-computed image tensor
+    to avoid expensive re-processing per sentence.
     Returns (box_dict_or_None, raw_output_str).
     """
     prompt = GROUNDING_PROMPT_TEMPLATE.format(sentence=sentence)
@@ -139,6 +168,9 @@ def predict_grounding_box(
             return_dict=True,
             return_tensors="pt",
         ).to(model.device)
+
+        if cached_pixel_values is not None:
+            inputs["pixel_values"] = cached_pixel_values
 
         input_len = inputs["input_ids"].shape[1]
 

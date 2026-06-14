@@ -38,11 +38,13 @@ from util import (
     load_model,
     parse_reasoning_sentences,
     predict_grounding_box,
+    preprocess_image_inputs,
     grounding_results_to_json,
 )
 from tokens import HF_TOKEN
 
 RESULTS_DIR = os.path.join(PROJECT_ROOT, "results")
+RESULTS_LOCAL_DIR = os.path.join(PROJECT_ROOT, "results_local")
 IMAGES_DIR = os.path.join(RESULTS_DIR, "images")
 CHECKPOINT_EVERY = 10
 MODEL_NAME = "medgemma"
@@ -81,27 +83,45 @@ def _is_row_done(row: pd.Series) -> bool:
 
 def _ground_on_image(model, processor, img_path: str, reason_text: str) -> str:
     image = Image.open(img_path).convert("RGB")
+    pixel_values, image = preprocess_image_inputs(processor, image, model.device)
     parsed = parse_reasoning_sentences(reason_text)
     results = []
     for entry in parsed:
-        box, raw = predict_grounding_box(model, processor, image, entry["text"])
+        box, raw = predict_grounding_box(
+            model, processor, image, entry["text"],
+            cached_pixel_values=pixel_values,
+        )
         results.append({
             "type": entry["type"],
             "diagnosis": entry["diagnosis"],
             "text": entry["text"],
             "box": box,
         })
+    del pixel_values
     return json.dumps(results, separators=(",", ":"))
 
 
-def process(model, processor, csv_path: str, images_dir: str, limit: int | None = None):
-    out_path = csv_path.replace("_predictions_reason.csv", "_predictions_reason_viz_self.csv")
+def process(model, processor, csv_path: str, images_dir: str, limit: int | None = None,
+            start: int | None = None, end: int | None = None, shard: int | None = None):
+    if shard is not None:
+        batch_dir = os.path.join(RESULTS_LOCAL_DIR, "medgemma_viz_ground_batch")
+        os.makedirs(batch_dir, exist_ok=True)
+        out_path = os.path.join(batch_dir, f"shard_{shard}.csv")
+    else:
+        out_path = csv_path.replace("_predictions_reason.csv", "_predictions_reason_viz_self.csv")
 
     df = pd.read_csv(csv_path)
     print(f"\n{'='*60}")
     print(f"Model: {MODEL_NAME} (self-grounding)")
     print(f"Input:  {csv_path}  ({len(df)} rows)")
     print(f"Output: {out_path}")
+
+    # Slice rows if start/end specified
+    if start is not None or end is not None:
+        s = start or 0
+        e = end or len(df)
+        df = df.iloc[s:e].reset_index(drop=True)
+        print(f"Row slice: [{s}:{e}] ({len(df)} rows)")
 
     if os.path.exists(out_path):
         out_df = pd.read_csv(out_path)
@@ -266,12 +286,51 @@ def _write_full(done_map: dict[str, dict], input_df: pd.DataFrame, out_path: str
         print(f"[Checkpoint] {len(out_df)} rows written")
 
 
+def _merge_shards(csv_path: str, results_dir: str, images_dir: str):
+    """Merge all shard CSVs from results_local/medgemma_viz_ground_batch/ into a single _viz_self.csv."""
+    import glob as globmod
+
+    batch_dir = os.path.join(RESULTS_LOCAL_DIR, "medgemma_viz_ground_batch")
+    pattern = os.path.join(batch_dir, "shard_*.csv")
+    shard_files = sorted(globmod.glob(pattern))
+    if not shard_files:
+        print(f"No shard files found matching {pattern}")
+        return
+
+    print(f"Merging {len(shard_files)} shards...")
+    input_df = pd.read_csv(csv_path)
+
+    done_map: dict[str, dict] = {}
+    for sf in shard_files:
+        shard_df = pd.read_csv(sf)
+        for _, r in shard_df.iterrows():
+            row_id = r["id"]
+            if _is_row_done(r):
+                done_map[row_id] = r.to_dict()
+            elif row_id not in done_map:
+                done_map[row_id] = r.to_dict()
+        print(f"  {os.path.basename(sf)}: {len(shard_df)} rows")
+
+    out_path = os.path.join(results_dir, f"{MODEL_NAME}_predictions_reason_viz_self.csv")
+    _write_full(done_map, input_df, out_path)
+    _remap_combined_rows(out_path, images_dir)
+    print(f"Merged → {out_path} ({len(done_map)} rows)")
+
+
 def main():
     parser = argparse.ArgumentParser(description="MedGemma self-grounding")
     parser.add_argument("--limit", type=int, default=None)
+    parser.add_argument("--start", type=int, default=None,
+                        help="Start row index (0-based, inclusive)")
+    parser.add_argument("--end", type=int, default=None,
+                        help="End row index (exclusive)")
+    parser.add_argument("--shard", type=int, default=None,
+                        help="Shard ID — output goes to shard_{N}.csv")
     parser.add_argument("--images-dir", type=str, default=IMAGES_DIR)
     parser.add_argument("--results-dir", type=str, default=RESULTS_DIR)
     parser.add_argument("--hf-token", type=str, default=None)
+    parser.add_argument("--merge", action="store_true",
+                        help="Merge all shard CSVs into final _viz_self.csv")
     args = parser.parse_args()
 
     hf_token = args.hf_token or HF_TOKEN
@@ -281,11 +340,16 @@ def main():
         print(f"Not found: {csv_path}")
         sys.exit(1)
 
+    if args.merge:
+        _merge_shards(csv_path, args.results_dir, args.images_dir)
+        return
+
     print("Loading MedGemma...")
     model, processor = load_model(hf_token=hf_token)
     print("Model ready.\n")
 
-    process(model, processor, csv_path, args.images_dir, limit=args.limit)
+    process(model, processor, csv_path, args.images_dir,
+            limit=args.limit, start=args.start, end=args.end, shard=args.shard)
     print("\nAll done.")
 
 

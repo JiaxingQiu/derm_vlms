@@ -3,6 +3,7 @@ archive/
 data/
 data_share/
 results/
+results_local/
 data.zip
 images.zip
 staticfiles/

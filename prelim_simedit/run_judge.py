@@ -17,9 +17,11 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("--robot", default="medgemma")
     p.add_argument("--judge", default="gpt53")
+    p.add_argument("--differential", default="top_1", choices=["top_1", "top_3"])
     args = p.parse_args()
 
-    run_judge(robot_name=args.robot, judge=args.judge)
+    run_judge(robot_name=args.robot, judge=args.judge,
+              differential=args.differential)
 
 
 if __name__ == "__main__":

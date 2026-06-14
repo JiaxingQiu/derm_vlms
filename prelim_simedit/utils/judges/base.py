@@ -1,23 +1,21 @@
 """Judge ABC: the pluggable judge (stronger reviewer) side.
 
-A judge sees the image + the robot's proposed diagnosis and returns a verdict.
-It never receives the ground-truth label. Each judge implements its own client
-call, so an Azure OpenAI judge and an Anthropic-on-Foundry judge can coexist
-behind the same interface.
+A judge sees the image + the robot's proposed diagnosis and returns its own
+diagnosis. Each judge implements its own client call.
 """
 
 import json
 import re
 from abc import ABC, abstractmethod
 
-_EMPTY = {"verdict": "", "correct_diagnosis": "", "reasoning": ""}
 
-
-def parse_judge_json(text):
+def parse_judge_json(text, differential="top_1"):
     """Robustly extract the judge JSON object from a model response."""
     if not text:
-        return dict(_EMPTY, raw="")
-    raw = text
+        if differential == "top_1":
+            return {"diagnosis": "", "reasoning": ""}
+        return {"corrected_differential": ""}
+
     t = text.strip()
     t = re.sub(r"^```(?:json)?", "", t).strip()
     t = re.sub(r"```$", "", t).strip()
@@ -31,14 +29,23 @@ def parse_judge_json(text):
                 obj = json.loads(m.group(0))
             except Exception:
                 obj = None
+
     if not isinstance(obj, dict):
-        return dict(_EMPTY, raw=raw)
-    return {
-        "verdict": str(obj.get("verdict", "")).strip().lower(),
-        "correct_diagnosis": str(obj.get("correct_diagnosis", "")).strip(),
-        "reasoning": str(obj.get("reasoning", "")).strip(),
-        "raw": raw,
-    }
+        if differential == "top_1":
+            return {"diagnosis": "", "reasoning": ""}
+        return {"corrected_differential": ""}
+
+    if differential == "top_1":
+        return {
+            "diagnosis": str(obj.get("diagnosis",
+                             obj.get("correct_diagnosis", ""))).strip(),
+            "reasoning": str(obj.get("reasoning", "")).strip(),
+        }
+    else:
+        return {
+            "corrected_differential": str(
+                obj.get("corrected_differential", "")).strip(),
+        }
 
 
 class Judge(ABC):
@@ -53,8 +60,8 @@ class Judge(ABC):
         """Initialise the API client. Call once."""
 
     @abstractmethod
-    def judge(self, image, dx):
-        """Return dict: verdict, correct_diagnosis, reasoning, raw."""
+    def judge(self, image, dx, differential="top_1"):
+        """Return dict with diagnosis fields."""
 
     def ensure_loaded(self):
         if not self._loaded:

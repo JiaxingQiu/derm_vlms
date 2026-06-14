@@ -1,78 +1,106 @@
 """Prompt templates shared across the three phases.
 
-Kept deliberately simple: the robot returns a single top-1 diagnosis, the
-judge returns strict JSON. The judge never sees the ground-truth label.
+Supports two modes via DIFFERENTIAL config:
+  - "top_1": robot gives single top-1 diagnosis, judge gives its own top-1
+  - "top_3": robot gives top-3 differential, judge gives its own top-3
 """
-
-SYSTEM_ROBOT = (
-    "You are a dermatology diagnosis assistant. Answer concisely using "
-    "standard dermatological terminology."
-)
 
 SYSTEM_JUDGE = (
     "You are an expert board-certified dermatologist acting as a reviewer. "
-    "You assess another model's diagnosis for a skin lesion image and decide "
-    "whether it is correct."
+    "You assess another model's diagnosis for a skin lesion image and provide "
+    "your own expert diagnosis."
 )
 
-# --- Phase 1: preedit -------------------------------------------------------
+# =============================================================================
+# Phase 1: preedit
+# =============================================================================
 
-PREEDIT = (
+PREEDIT_TOP1 = (
     "Look at the lesion in this image and give your single most likely "
     "diagnosis (top-1 only). Respond with exactly one line:\n"
     "Diagnosis: <diagnosis name>"
 )
 
+PREEDIT_TOP3 = (
+    "You are an expert dermatologist. Please give the top 3 diagnoses in "
+    "your differential, and provide reasoning for each diagnosis, in format:\n"
+    "1. [Diagnosis]: [Reasoning]\n"
+    "2. [Diagnosis]: [Reasoning]\n"
+    "3. [Diagnosis]: [Reasoning]"
+)
 
-def preedit_prompt():
-    return PREEDIT
+
+def preedit_prompt(differential="top_1"):
+    return PREEDIT_TOP1 if differential == "top_1" else PREEDIT_TOP3
 
 
-# --- Phase 2: judge ---------------------------------------------------------
+# =============================================================================
+# Phase 2: judge
+# =============================================================================
 
-JUDGE = (
+JUDGE_TOP1 = (
     "A diagnostic model examined the lesion in this image and proposed the "
     "following diagnosis:\n\n"
     "    \"{dx}\"\n\n"
     "As an expert dermatologist, review this against what you see in the "
-    "image. Decide whether the proposed diagnosis is correct. If it is not "
-    "correct, state the correct diagnosis. Briefly justify your decision "
-    "from the visual findings.\n\n"
+    "image. Provide your own diagnosis and briefly justify from visual "
+    "findings.\n\n"
     "Respond ONLY with a JSON object, no extra text:\n"
-    "{{\"verdict\": \"correct\" | \"incorrect\", "
-    "\"correct_diagnosis\": \"<diagnosis name>\", "
-    "\"reasoning\": \"<one or two sentences>\"}}\n"
-    "If the proposed diagnosis is correct, set correct_diagnosis to that same "
-    "diagnosis."
+    "{{\"diagnosis\": \"<your diagnosis>\", "
+    "\"reasoning\": \"<one or two sentences>\"}}"
+)
+
+JUDGE_TOP3 = (
+    "A diagnostic model examined the lesion in this image and proposed this "
+    "differential diagnosis:\n\n"
+    "{dx}\n\n"
+    "As an expert dermatologist, review this differential against what you "
+    "see in the image. Provide your own corrected top-3 differential in the "
+    "same format: 1. [Diagnosis]: [Reasoning]\n\n"
+    "Respond ONLY with a JSON object, no extra text:\n"
+    "{{\"corrected_differential\": \"1. [Diagnosis]: [Reasoning]\\n"
+    "2. [Diagnosis]: [Reasoning]\\n3. [Diagnosis]: [Reasoning]\"}}"
 )
 
 
-def judge_prompt(dx):
-    return JUDGE.format(dx=dx)
+def judge_prompt(dx, differential="top_1"):
+    if differential == "top_1":
+        return JUDGE_TOP1.format(dx=dx)
+    return JUDGE_TOP3.format(dx=dx)
 
 
-# --- Phase 3: postedit ------------------------------------------------------
+# =============================================================================
+# Phase 3: postedit — always show judge's diagnosis as hint
+# =============================================================================
 
-POSTEDIT_HINT_INCORRECT = (
-    "\n\nNote: A reviewing expert dermatologist has indicated that "
-    "\"{preedit_dx}\" is not correct. The correct diagnosis is "
-    "\"{correct_dx}\" because: {reasoning}"
+POSTEDIT_HINT_TOP1 = (
+    "\n\nNote: A reviewing expert dermatologist suggests the diagnosis is "
+    "\"{judge_dx}\" because: {reasoning}"
 )
 
-POSTEDIT_HINT_CORRECT = (
-    "\n\nNote: A reviewing expert dermatologist has confirmed that "
-    "\"{preedit_dx}\" is correct."
+POSTEDIT_HINT_TOP3 = (
+    "\n\nNote: A reviewing expert dermatologist suggests the following "
+    "corrected differential:\n"
+    "{corrected_differential}"
 )
 
 
-def postedit_prompt(preedit_dx, verdict, correct_dx, reasoning):
-    """Same question as preedit + judge feedback appended as extra context."""
-    if str(verdict).strip().lower() == "correct":
-        hint = POSTEDIT_HINT_CORRECT.format(preedit_dx=preedit_dx)
-    else:
-        hint = POSTEDIT_HINT_INCORRECT.format(
-            preedit_dx=preedit_dx,
-            correct_dx=correct_dx,
-            reasoning=reasoning,
+def postedit_prompt(differential="top_1", **kwargs):
+    """Build postedit prompt: same question as preedit + judge's diagnosis as hint.
+
+    For top_1: kwargs = judge_dx, reasoning
+    For top_3: kwargs = corrected_differential
+    """
+    if differential == "top_1":
+        base = PREEDIT_TOP1
+        hint = POSTEDIT_HINT_TOP1.format(
+            judge_dx=kwargs.get("judge_dx", ""),
+            reasoning=kwargs.get("reasoning", ""),
         )
-    return PREEDIT + hint
+    else:
+        base = PREEDIT_TOP3
+        hint = POSTEDIT_HINT_TOP3.format(
+            corrected_differential=kwargs.get("corrected_differential", ""),
+        )
+
+    return base + hint

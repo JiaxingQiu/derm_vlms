@@ -22,6 +22,7 @@ def main():
     p.add_argument("--case-ids", nargs="+", default=None,
                    help="explicit case_id list (overrides --n/--seed)")
     p.add_argument("--image-mode", default="combined")
+    p.add_argument("--differential", default="top_1", choices=["top_1", "top_3"])
     args = p.parse_args()
 
     run_preedit(
@@ -30,6 +31,7 @@ def main():
         seed=args.seed,
         case_ids=args.case_ids,
         image_mode=args.image_mode,
+        differential=args.differential,
     )
 
 

@@ -5,6 +5,7 @@ from .gpt54 import GPT54Judge
 from .claude_opus import ClaudeOpus48Judge, ClaudeOpus46Judge
 from .claude_sonnet import ClaudeSonnet46Judge
 from .claude_fable import ClaudeFableJudge
+from .ground_truth import GroundTruthJudge
 
 JUDGE_REGISTRY = {
     GPT53Judge.name: GPT53Judge,
@@ -13,6 +14,7 @@ JUDGE_REGISTRY = {
     ClaudeOpus46Judge.name: ClaudeOpus46Judge,
     ClaudeSonnet46Judge.name: ClaudeSonnet46Judge,
     ClaudeFableJudge.name: ClaudeFableJudge,
+    GroundTruthJudge.name: GroundTruthJudge,
 }
 
 

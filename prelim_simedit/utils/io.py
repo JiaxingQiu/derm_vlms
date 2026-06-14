@@ -30,19 +30,21 @@ def _get_robot_dir(robot):
     return root
 
 
-def stage_path(stage, robot, judge=None):
+def stage_path(stage, robot, judge=None, differential="top_1"):
     """Return the CSV path for a given stage.
 
     stage in {"preedit", "judge", "postedit", "scored", "summary"}.
     Results go to the override dir (if set) or results_local/<robot>/.
+    File names include the differential mode so top_1/top_3 don't collide.
     """
     robot_dir = _get_robot_dir(robot)
+    d = differential
     names = {
-        "preedit": "01_preedit.csv",
-        "judge": f"02_judge__{judge}.csv",
-        "postedit": f"03_postedit__{judge}.csv",
-        "scored": f"scored__{judge}.csv",
-        "summary": f"summary__{judge}.csv",
+        "preedit": f"01_preedit__{d}.csv",
+        "judge": f"02_judge__{judge}__{d}.csv",
+        "postedit": f"03_postedit__{judge}__{d}.csv",
+        "scored": f"scored__{judge}__{d}.csv",
+        "summary": f"summary__{judge}__{d}.csv",
     }
     return str(robot_dir / names[stage])
 

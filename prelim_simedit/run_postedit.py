@@ -17,10 +17,13 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("--robot", default="medgemma")
     p.add_argument("--judge", default="gpt53")
-    p.add_argument("--max-new-tokens", type=int, default=64)
+    p.add_argument("--max-new-tokens", type=int, default=None,
+                   help="default: 64 for top_1, 512 for top_3")
+    p.add_argument("--differential", default="top_1", choices=["top_1", "top_3"])
     args = p.parse_args()
 
     run_postedit(robot=args.robot, judge_name=args.judge,
+                 differential=args.differential,
                  max_new_tokens=args.max_new_tokens)
 
 

@@ -35,7 +35,7 @@ class ClaudeBaseJudge(Judge):
         )
         self.deployment = getattr(tokens, self._deployment_token)
 
-    def judge(self, image, dx, max_tokens=512):
+    def judge(self, image, dx, differential="top_1", max_tokens=512):
         b64 = _image_to_base64(image)
         message = self.client.messages.create(
             model=self.deployment,
@@ -52,10 +52,10 @@ class ClaudeBaseJudge(Judge):
                                 "data": b64,
                             },
                         },
-                        {"type": "text", "text": judge_prompt(dx)},
+                        {"type": "text", "text": judge_prompt(dx, differential)},
                     ],
                 },
             ],
             max_tokens=max_tokens,
         )
-        return parse_judge_json(message.content[0].text)
+        return parse_judge_json(message.content[0].text, differential)

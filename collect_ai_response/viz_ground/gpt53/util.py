@@ -98,11 +98,16 @@ def predict_grounding_box(
 
     raw_output = ""
     for attempt in range(max_attempts):
-        response = client.chat.completions.create(
-            model=DEPLOYMENT,
-            messages=messages,
-            max_completion_tokens=max_tokens,
-        )
+        try:
+            response = client.chat.completions.create(
+                model=DEPLOYMENT,
+                messages=messages,
+                max_completion_tokens=max_tokens,
+            )
+        except Exception as e:
+            if "content_policy_violation" in str(e) or "content_filter" in str(e):
+                return None, f"[CONTENT_FILTERED] {e}"
+            raise
         raw_output = response.choices[0].message.content
 
         box = _parse_bbox_response(raw_output)

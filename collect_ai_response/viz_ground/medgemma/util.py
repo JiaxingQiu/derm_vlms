@@ -195,10 +195,13 @@ def _parse_bbox_response(text: str) -> dict | None:
     """Extract [x1,y1,x2,y2] from model output and convert to {x,y,w,h}."""
     try:
         obj = json.loads(text.strip())
-        coords = obj.get("bbox_2d")
-        if coords and len(coords) == 4:
-            return _coords_to_xywh(coords)
-    except (json.JSONDecodeError, TypeError):
+        if isinstance(obj, dict):
+            coords = obj.get("bbox_2d")
+            if coords and len(coords) == 4:
+                return _coords_to_xywh(coords)
+        elif isinstance(obj, list) and len(obj) == 4 and all(isinstance(x, (int, float)) for x in obj):
+            return _coords_to_xywh(obj)
+    except (json.JSONDecodeError, TypeError, AttributeError):
         pass
 
     match = re.search(r"\[\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\]", text)

@@ -45,6 +45,21 @@ python medgemma/run_self_ground.py --merge
 
 Jobs: `jobs/viz_ground/self/*.sbatch`
 
+## Combining sources for the interface
+
+To use self-grounded boxes for the first half of cases (sorted by case number)
+and external Qwen3 boxes for the second half:
+
+```
+python combine_viz_sources.py              # all models
+python combine_viz_sources.py --model gpt53  # one model
+```
+
+Output: `results/<model>_predictions_reason_viz_combined.csv`
+
+Then re-run `python manage.py parsedata` in `revlm_dc/` to regenerate
+`annotations_data.json` with the combined boxes.
+
 ## Shared logic
 
 - **Reasoning parsing**: All scripts use `revlm_dc/dermatology_annotations/parse.py` (`parse_reason_response`) — same parser as the Django interface.
@@ -57,6 +72,7 @@ Jobs: `jobs/viz_ground/self/*.sbatch`
 ```
 viz_ground/
 ├── README.md
+├── combine_viz_sources.py          # merge self + external boxes per model
 ├── remap_boxes_to_combined.py      # post-process for external grounding
 ├── qwen3_8b/
 │   ├── util.py                     # model loading, inference, parsing

@@ -30,9 +30,9 @@ VLMS = {
 }
 
 VIZ_CSVS = {
-    "MedGemma": "results/medgemma_predictions_reason_viz.csv",
-    "GPT-5.3": "results/gpt53_predictions_reason_viz.csv",
-    "DermatoLlama": "results/dermato_llama_predictions_reason_viz.csv",
+    "MedGemma": "results/medgemma_predictions_reason_viz_combined.csv",
+    "GPT-5.3": "results/gpt53_predictions_reason_viz_combined.csv",
+    "DermatoLlama": "results/dermato_llama_predictions_reason_viz_combined.csv",
 }
 
 RESPONSE_COL = "reason_classify"

@@ -780,7 +780,8 @@
 
             var reasonTa = document.createElement('textarea');
             reasonTa.rows = 3;
-            reasonTa.placeholder = 'Please provide your reasoning and at least one visual evidence by cropping.';
+            /* Visual grounding UI hidden — drop crop wording from placeholder */
+            reasonTa.placeholder = 'Please provide your reasoning.';
             reasonTa.value = diag.replacement_reason;
             reasonTa.dataset.kind = 'replacement';
             reasonTa.dataset.diagIndex = String(dIdx);
@@ -827,10 +828,12 @@
             reasonTa.addEventListener('keyup', _repCursorSelectBox);
             repDiv.appendChild(reasonTa);
 
+            /* Visual grounding UI hidden — crop-required error message not shown
             var cropErr = document.createElement('div');
             cropErr.className = 'crop-error';
             cropErr.textContent = 'Please provide at least one visual evidence by cropping.';
             repDiv.appendChild(cropErr);
+            */
 
             repDiv.addEventListener('mouseenter', function () {
                 var crops = diag.replacement_crops || [];

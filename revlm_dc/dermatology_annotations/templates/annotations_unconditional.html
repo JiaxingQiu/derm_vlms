@@ -314,7 +314,8 @@
                 var ta = document.createElement('textarea');
                 ta.className = 'reason-textarea';
                 ta.rows = 2;
-                ta.placeholder = 'Please provide your reasoning and at least one visual evidence by cropping.';
+                /* Visual grounding UI hidden — drop crop wording from placeholder */
+                ta.placeholder = 'Please provide your reasoning.';
                 ta.value = sent.text;
                 ta.dataset.diagIndex = String(dIdx);
                 ta.dataset.sentIndex = String(sIdx);
@@ -405,14 +406,16 @@
 
             var hint = document.createElement('div');
             hint.className = 'reason-hint';
-            hint.textContent = 'Provide reasoning one sentence at a time. Each sentence should describe one or a few visual details \u2014 crop evidence from the image for each.';
+            /* Visual grounding UI hidden — drop crop wording from hint */
+            hint.textContent = 'Provide reasoning one sentence at a time. Each sentence should describe one or a few visual details.';
             repDiv.appendChild(hint);
 
-            // Crop error (card-level)
+            /* Visual grounding UI hidden — crop-required error message not shown
             var cropErr = document.createElement('div');
             cropErr.className = 'crop-error';
             cropErr.textContent = 'Please provide at least one visual evidence by cropping.';
             repDiv.appendChild(cropErr);
+            */
 
             exp.appendChild(repDiv);
             card.appendChild(exp);

@@ -935,7 +935,8 @@
         if (diag.reasoning_edits.length) {
             var rLabel = document.createElement('div');
             rLabel.className = 'diag-hint';
-            rLabel.innerHTML = 'Click to edit <u>AI-generated reasoning</u> and <u>AI-generated visual groundings</u>.';
+            /* Visual grounding UI hidden — drop visual groundings from hint */
+            rLabel.innerHTML = 'Click to edit <u>AI-generated reasoning</u>.';
             exp.appendChild(rLabel);
 
             var rList = document.createElement('div');

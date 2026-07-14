@@ -59,7 +59,8 @@
                         <button type="button" id="btn-zout" title="Zoom out">&minus;</button>
                         <button type="button" id="btn-zreset" title="Reset zoom">&#x21BA;</button>
                         <span class="spacer"></span>
-                        <div class="crop-wrap">
+                        {# Visual grounding UI hidden for clinicians — keep DOM so JS listeners stay safe #}
+                        <div class="crop-wrap" style="display:none">
                             <button type="button" id="btn-crop" class="btn-crop-green">&#x2702; Crop</button>
                             <div class="crop-hint">You can use &#x2702; Crop to select a region that <u>visually supports any detail</u> in your edits (e.g., pinkish color, irregular shape, etc.).</div>
                         </div>
@@ -597,7 +598,9 @@ main{max-width:none;margin:0;padding:8px 12px}
     }
 
     /* --- Passive hover: show boxes, no interaction --- */
+    /* Visual grounding UI hidden for clinicians — no-op display (data still loads/saves) */
     function showGroundingBoxes(items) {
+        return;
         if (_gbEditing) return;
         hideGroundingBoxes();
         items.forEach(function (item) {
@@ -615,7 +618,9 @@ main{max-width:none;margin:0;padding:8px 12px}
     }
 
     /* --- Interactive edit mode --- */
+    /* Visual grounding UI hidden for clinicians — no-op editor (data still loads/saves) */
     function activateBoxEditor(boxes, labels, onChange, onDelete, colors) {
+        return;
         hideGroundingBoxes();
         _gbEditing = true;
         _gbOnChange = onChange || null;

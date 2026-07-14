@@ -217,10 +217,12 @@
                 if (firstTa) { firstTa.closest('.reason-row').style.borderColor = '#dc2626'; }
                 ok = false;
             }
+            /* Visual grounding UI hidden — skip crop requirement
             if (!_diagHasCrops(d)) {
                 if (cropErr) cropErr.classList.add('show');
                 ok = false;
             }
+            */
         });
         return ok;
     };
@@ -230,12 +232,14 @@
             var cardEl = document.querySelector('.diag-card[data-diag-index="' + dIdx + '"]');
             if (!cardEl) return;
             if (cardEl.contains(e.target)) return;
+            /* Visual grounding UI hidden — skip crop-error nudge
             var cropErr = cardEl.querySelector('.crop-error');
             if (cropErr && _diagHasText(diag) && !_diagHasCrops(diag)) {
                 cropErr.classList.add('show');
             } else if (cropErr) {
                 cropErr.classList.remove('show');
             }
+            */
         });
     });
 

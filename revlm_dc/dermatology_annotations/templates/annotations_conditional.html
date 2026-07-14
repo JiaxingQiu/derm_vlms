@@ -304,6 +304,7 @@
             if (d.deleted) {
                 if (!d.replacement_name.trim()) return false;
                 if (!d.replacement_reason.trim()) return false;
+                /* Visual grounding UI hidden — skip crop requirement
                 var hasCrops = (d.replacement_crops || []).some(function (c) { return !!c; });
                 if (!hasCrops) {
                     var ta = document.querySelector('textarea[data-kind="replacement"][data-diag-index="' + i + '"]');
@@ -313,6 +314,7 @@
                     }
                     return false;
                 }
+                */
             }
         }
         return true;
@@ -799,12 +801,14 @@
             reasonTa.addEventListener('blur', function () {
                 if (_skipNextBlur) { _skipNextBlur = false; return; }
                 deactivateBoxEditor();
+                /* Visual grounding UI hidden — skip crop-error nudge
                 var errEl = reasonTa.parentElement.querySelector('.crop-error');
                 if (errEl) {
                     var hasCrops = (diag.replacement_crops || []).some(function (c) { return !!c; });
                     var hasText = reasonTa.value.trim();
                     errEl.classList.toggle('show', hasText && !hasCrops);
                 }
+                */
             });
             function _repCursorSelectBox() {
                 var pos = reasonTa.selectionStart;

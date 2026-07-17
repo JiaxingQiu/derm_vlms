@@ -113,9 +113,11 @@ class Annotation(models.Model):
     # Full visit history: [{"entered_at": iso, "completed_at": iso|null}, ...]
     page_visits = models.JSONField(default=list, blank=True)
 
+    MAX_VISIT_SECONDS = 30 * 60  # 30 min — visits longer than this are capped
+
     @property
     def total_duration_seconds(self):
-        """Total wall-clock seconds across all visits."""
+        """Total active seconds across all visits (capped per visit)."""
         total = 0.0
         from datetime import datetime
         for v in (self.page_visits or []):
@@ -124,7 +126,7 @@ class Annotation(models.Model):
             if e and c:
                 t0 = datetime.fromisoformat(e)
                 t1 = datetime.fromisoformat(c)
-                total += (t1 - t0).total_seconds()
+                total += min((t1 - t0).total_seconds(), self.MAX_VISIT_SECONDS)
         return total if total > 0 else None
 
     class Meta:
@@ -270,8 +272,11 @@ class PCPAnnotation(models.Model):
 
     page_visits = models.JSONField(default=list, blank=True)
 
+    MAX_VISIT_SECONDS = 30 * 60
+
     @property
     def total_duration_seconds(self):
+        """Total active seconds across all visits (capped per visit)."""
         total = 0.0
         from datetime import datetime
         for v in (self.page_visits or []):
@@ -280,7 +285,7 @@ class PCPAnnotation(models.Model):
             if e and c:
                 t0 = datetime.fromisoformat(e)
                 t1 = datetime.fromisoformat(c)
-                total += (t1 - t0).total_seconds()
+                total += min((t1 - t0).total_seconds(), self.MAX_VISIT_SECONDS)
         return total if total > 0 else None
 
     class Meta:

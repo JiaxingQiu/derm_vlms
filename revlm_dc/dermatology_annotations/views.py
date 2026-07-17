@@ -25,6 +25,7 @@ from .models import (
 _EMPTY_TC = {"text": "", "crops": []}
 AUTH_TOKEN_PARAM = "auth"
 AUTH_TOKEN_TTL = timedelta(hours=12)
+AUTH_IDLE_TIMEOUT = timedelta(hours=2)
 
 
 # ---------------------------------------------------------------------------
@@ -145,12 +146,14 @@ def get_tab_auth_session(request):
     if not raw_token:
         return "", None
 
+    now = timezone.now()
     tab_session = (
         TabAuthSession.objects.select_related("dermatologist", "pcp_user")
         .filter(
             token_hash=hash_auth_token(raw_token),
             revoked_at__isnull=True,
-            expires_at__gt=timezone.now(),
+            expires_at__gt=now,
+            last_used_at__gt=now - AUTH_IDLE_TIMEOUT,
         )
         .first()
     )

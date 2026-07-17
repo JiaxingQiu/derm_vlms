@@ -297,7 +297,7 @@ def normalize_diagnosis_feedback(items, ai_diagnoses):
     for idx, ai_d in enumerate(ai_diagnoses or []):
         raw = by_idx.get(idx, {})
         raw_label = raw.get("label") or ""
-        label = _LABEL_MAP.get(raw_label, "correct")
+        label = _LABEL_MAP.get(raw_label, "")
         raw_edits = raw.get("reasoning_edits") or []
 
         # Detect prepended "deleted" sentinel and pass it through as-is

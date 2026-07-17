@@ -291,6 +291,14 @@ main{max-width:none;margin:0;padding:8px 12px}
         return el ? el.value : '';
     }
 
+    function _handleSessionExpired() {
+        if (!_autosaveArmed) return;
+        _autosaveArmed = false;
+        if (_autosaveTimer) { clearTimeout(_autosaveTimer); _autosaveTimer = null; }
+        alert('Your session has ended (logged in from another tab/browser). Redirecting to login.');
+        window.location.href = '/';
+    }
+
     function doAutosave() {
         _autosaveTimer = null;
         if (!_autosaveArmed) return;
@@ -307,10 +315,16 @@ main{max-width:none;margin:0;padding:8px 12px}
                 'Accept': 'application/json'
             },
             body: _buildAutosaveBody(),
-            credentials: 'same-origin'
+            credentials: 'same-origin',
+            redirect: 'manual'
         }).then(function (resp) {
             _autosaveInflight = false;
-            if (resp && resp.ok) showSaved();
+            if (!resp) return;
+            if (resp.status === 401 || resp.status === 0 || resp.redirected) {
+                _handleSessionExpired();
+                return;
+            }
+            if (resp.ok) showSaved();
         }).catch(function () {
             _autosaveInflight = false;
         });
@@ -899,9 +913,15 @@ main{max-width:none;margin:0;padding:8px 12px}
                         _page_case_id: _pageCaseId,
                         _page_model_key: _pageModelKey
                     }),
-                    credentials: 'same-origin'
+                    credentials: 'same-origin',
+                    redirect: 'manual'
                 }).then(function (resp) {
-                    if (resp && resp.ok) showSaved();
+                    if (!resp) return;
+                    if (resp.status === 401 || resp.status === 0) {
+                        _handleSessionExpired();
+                        return;
+                    }
+                    if (resp.ok) showSaved();
                 });
                 return;
             }
@@ -1028,6 +1048,19 @@ main{max-width:none;margin:0;padding:8px 12px}
     // Flush the latest edits if the user closes the tab or reloads.
     window.addEventListener('pagehide', flushAutosaveBeacon);
     window.addEventListener('beforeunload', flushAutosaveBeacon);
+
+    // When the user switches back to this tab, verify the session is still
+    // valid. If another tab logged in (revoking this token), kick out
+    // immediately before the user starts typing into a dead session.
+    document.addEventListener('visibilitychange', function () {
+        if (document.visibilityState !== 'visible' || !_autosaveArmed) return;
+        var url = '/session-check/?auth=' + encodeURIComponent(_authTokenValue());
+        fetch(url, { credentials: 'same-origin' })
+            .then(function (resp) {
+                if (resp.status === 401) _handleSessionExpired();
+            })
+            .catch(function () { /* network error — ignore, will retry on next focus */ });
+    });
 })();
 </script>
 {% endif %}

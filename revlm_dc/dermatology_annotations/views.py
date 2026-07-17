@@ -104,20 +104,27 @@ def hash_auth_token(raw_token):
 
 def create_tab_auth_session(login_id, role="Dermatologist"):
     raw_token = secrets.token_urlsafe(32)
+    now = timezone.now()
     if role == "PCP":
         pcp_user, _ = PCPUser.objects.get_or_create(login_id=login_id)
+        TabAuthSession.objects.filter(
+            pcp_user=pcp_user, revoked_at__isnull=True,
+        ).update(revoked_at=now)
         TabAuthSession.objects.create(
             pcp_user=pcp_user,
             token_hash=hash_auth_token(raw_token),
-            expires_at=timezone.now() + AUTH_TOKEN_TTL,
+            expires_at=now + AUTH_TOKEN_TTL,
         )
         return raw_token, pcp_user
     else:
         dermatologist, _ = Dermatologist.objects.get_or_create(login_id=login_id)
+        TabAuthSession.objects.filter(
+            dermatologist=dermatologist, revoked_at__isnull=True,
+        ).update(revoked_at=now)
         TabAuthSession.objects.create(
             dermatologist=dermatologist,
             token_hash=hash_auth_token(raw_token),
-            expires_at=timezone.now() + AUTH_TOKEN_TTL,
+            expires_at=now + AUTH_TOKEN_TTL,
         )
         return raw_token, dermatologist
 
@@ -600,9 +607,23 @@ def login_view(request):
 
 @never_cache
 @csrf_exempt
+def session_check_view(request):
+    """Lightweight endpoint for the client to verify its token is still valid."""
+    _, tab_session = get_tab_auth_session(request)
+    if tab_session is None:
+        return JsonResponse({"ok": False, "reason": "session_expired"}, status=401)
+    return JsonResponse({"ok": True})
+
+
+@never_cache
+@csrf_exempt
 def annotations_view(request):
     raw_token, tab_session = get_tab_auth_session(request)
     if tab_session is None:
+        if is_json_request(request):
+            return JsonResponse(
+                {"ok": False, "reason": "session_expired"}, status=401,
+            )
         return redirect("login")
 
     if tab_session.pcp_user_id:

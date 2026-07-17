@@ -210,6 +210,7 @@
                 originalName: String(aiD.name || ''),
                 label: (savedD.label === 'correct' || savedD.label === 'incorrect') ? savedD.label : '',
                 reasoning_edits: reasoningEdits,
+                _aiSentenceCount: sentences.length,
                 deleted: isReplaced,
                 replacement_name: isReplaced ? String(savedD.correct_differential || '') : '',
                 replacement_reason: replacementReason,
@@ -412,6 +413,7 @@
 
     function _isDiagChanged(diag) {
         if (diag.deleted) return true;
+        if (diag.reasoning_edits.length > diag._aiSentenceCount) return true;
         for (var i = 0; i < diag.reasoning_edits.length; i++) {
             var e = diag.reasoning_edits[i];
             if (e.edited !== e.original) return true;
@@ -436,6 +438,7 @@
         diag.replacement_reason = '';
         diag.replacement_crops = [];
         diag.name = diag.originalName;
+        diag.reasoning_edits.length = diag._aiSentenceCount;
         diag.reasoning_edits.forEach(function (e) {
             e.edited = e.original;
             var clinBox = e._aiClinBox
@@ -558,7 +561,7 @@
             delSent.title = 'Delete this sentence';
             delSent.addEventListener('mousedown', function (e) { e.preventDefault(); });
             delSent.onclick = function () {
-                if (edit.original === 'added') {
+                if (sIdx >= diag._aiSentenceCount) {
                     diag.reasoning_edits.splice(sIdx, 1);
                 } else {
                     edit.edited = '';
@@ -644,7 +647,7 @@
         } else {
             var textEl = document.createElement('div');
             textEl.className = 'reason-text';
-            if (wasEdited && edit.original !== 'added') {
+            if (wasEdited && sIdx < diag._aiSentenceCount) {
                 renderInlineDiffInto(textEl, edit.original, edit.edited);
             } else {
                 textEl.textContent = edit.edited;
@@ -661,7 +664,7 @@
         var actions = document.createElement('div');
         actions.className = 'reason-actions';
 
-        if (hasChanges && edit.original !== 'added') {
+        if (hasChanges && sIdx < diag._aiSentenceCount) {
             var btnRevert = document.createElement('button');
             btnRevert.type = 'button';
             btnRevert.className = 'reason-btn revert';

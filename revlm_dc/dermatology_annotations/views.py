@@ -609,6 +609,30 @@ def login_view(request):
 
 
 @never_cache
+def demo_login_view(request):
+    """Static shareable link that lands straight on the annotations page as "test".
+
+    Mints a fresh token per visit, so the /demo/ URL itself never goes stale
+    the way a copied ``?auth=`` link would.
+    """
+    from .assignments import assign_from_slot
+
+    evaluator, _ = Dermatologist.objects.get_or_create(
+        login_id="test",
+        defaults={"full_name": "Test User", "occupation": "Tester", "institution": "Demo"},
+    )
+    assign_from_slot(evaluator, slot_number=0, role="Dermatologist")
+    Annotation.objects.filter(dermatologist=evaluator).delete()
+    evaluator.current_case_index = 0
+    evaluator.current_model_index = 0
+    evaluator.is_done = False
+    evaluator.save()
+
+    raw_token, _ = create_tab_auth_session("test", role="Dermatologist")
+    return redirect(auth_url("annotations", raw_token))
+
+
+@never_cache
 @csrf_exempt
 def session_check_view(request):
     """Lightweight endpoint for the client to verify its token is still valid."""

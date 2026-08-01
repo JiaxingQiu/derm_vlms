@@ -10,6 +10,7 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.csrf import csrf_exempt
 from django.conf import settings
 from django.db import transaction
+from django.db.models import Exists, OuterRef
 from django.http import JsonResponse
 from django.urls import reverse
 from django.shortcuts import redirect, render
@@ -608,27 +609,66 @@ def login_view(request):
     })
 
 
+DEMO_LOGIN_PREFIX = "demo_"
+
+
+def _demo_evaluator_qs():
+    """Throwaway evaluators minted by :func:`demo_login_view`, and only those.
+
+    ``years_experience`` is the safety catch: registration validates it as an
+    integer, so a real person who happens to pick a ``demo_``-prefixed username
+    always has one set and can never be swept up by the purge below.
+    """
+    return Dermatologist.objects.filter(
+        login_id__startswith=DEMO_LOGIN_PREFIX,
+        years_experience__isnull=True,
+        assignment_slot__isnull=True,
+    )
+
+
+def _purge_finished_demo_evaluators():
+    """Drop demo evaluators whose sessions are all dead.
+
+    Cascades take their assignments, annotations and tokens with them, so the
+    table holds only the people currently demoing and empties out on its own.
+    """
+    now = timezone.now()
+    live_session = TabAuthSession.objects.filter(
+        dermatologist=OuterRef("pk"),
+        revoked_at__isnull=True,
+        expires_at__gt=now,
+        last_used_at__gt=now - AUTH_IDLE_TIMEOUT,
+    )
+    _demo_evaluator_qs().filter(~Exists(live_session)).delete()
+
+
 @never_cache
 def demo_login_view(request):
-    """Static shareable link that lands straight on the annotations page as "test".
+    """Static shareable link that lands straight on the annotations page.
 
-    Mints a fresh token per visit, so the /demo/ URL itself never goes stale
-    the way a copied ``?auth=`` link would.
+    Every visit mints its own throwaway ``demo_*`` evaluator, so any number of
+    people — or tabs — can explore the interface at once without revoking each
+    other's tokens or overwriting each other's work. Abandoned evaluators are
+    collected by the purge above once their session dies.
+
+    Demo evaluators keep ``assignment_slot`` null so they stay invisible to
+    ``next_available_slot`` and cannot shift real registrations.
     """
     from .assignments import assign_from_slot
 
-    evaluator, _ = Dermatologist.objects.get_or_create(
-        login_id="test",
-        defaults={"full_name": "Test User", "occupation": "Tester", "institution": "Demo"},
+    _purge_finished_demo_evaluators()
+
+    evaluator = Dermatologist.objects.create(
+        login_id=DEMO_LOGIN_PREFIX + secrets.token_hex(8),
+        full_name="Demo User",
+        occupation="Tester",
+        institution="Demo",
     )
     assign_from_slot(evaluator, slot_number=0, role="Dermatologist")
-    Annotation.objects.filter(dermatologist=evaluator).delete()
-    evaluator.current_case_index = 0
-    evaluator.current_model_index = 0
-    evaluator.is_done = False
-    evaluator.save()
+    evaluator.assignment_slot = None
+    evaluator.save(update_fields=["assignment_slot"])
 
-    raw_token, _ = create_tab_auth_session("test", role="Dermatologist")
+    raw_token, _ = create_tab_auth_session(evaluator.login_id, role="Dermatologist")
     return redirect(auth_url("annotations", raw_token))
 
 

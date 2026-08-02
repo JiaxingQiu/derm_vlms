@@ -615,7 +615,7 @@ DEMO_LOGIN_PREFIX = "demo_"
 # full AUTH_IDLE_TIMEOUT so a dermatologist can step away mid-case. This only
 # governs when a demo row becomes collectable; it is deliberately not wired
 # into get_tab_auth_session, so no real session is affected by it.
-DEMO_IDLE_TIMEOUT = timedelta(minutes=2)
+DEMO_IDLE_TIMEOUT = timedelta(minutes=10)
 
 
 def _demo_evaluator_qs():

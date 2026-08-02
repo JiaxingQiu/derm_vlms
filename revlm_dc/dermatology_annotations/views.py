@@ -626,11 +626,12 @@ def _demo_evaluator_qs():
     )
 
 
-def _purge_finished_demo_evaluators():
-    """Drop demo evaluators whose sessions are all dead.
+def finished_demo_evaluators():
+    """Demo evaluators whose sessions are all dead, and so safe to collect.
 
-    Cascades take their assignments, annotations and tokens with them, so the
-    table holds only the people currently demoing and empties out on its own.
+    A visitor qualifies only once every token they hold is revoked, expired or
+    past the idle window — that is, once they could no longer act anyway — so
+    collecting them never interrupts someone mid-demo.
     """
     now = timezone.now()
     live_session = TabAuthSession.objects.filter(
@@ -639,7 +640,18 @@ def _purge_finished_demo_evaluators():
         expires_at__gt=now,
         last_used_at__gt=now - AUTH_IDLE_TIMEOUT,
     )
-    _demo_evaluator_qs().filter(~Exists(live_session)).delete()
+    return _demo_evaluator_qs().filter(~Exists(live_session))
+
+
+def _purge_finished_demo_evaluators():
+    """Drop demo evaluators whose sessions are all dead.
+
+    Cascades take their assignments, annotations and tokens with them, so the
+    table holds only the people currently demoing and empties out on its own.
+    This only fires when someone opens /demo/, so a quiet site should also run
+    the ``purge_demo_users`` management command on a schedule.
+    """
+    finished_demo_evaluators().delete()
 
 
 @never_cache

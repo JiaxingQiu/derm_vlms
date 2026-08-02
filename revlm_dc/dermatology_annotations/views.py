@@ -611,6 +611,12 @@ def login_view(request):
 
 DEMO_LOGIN_PREFIX = "demo_"
 
+# Demo visitors are collected far sooner than real evaluators, who keep the
+# full AUTH_IDLE_TIMEOUT so a dermatologist can step away mid-case. This only
+# governs when a demo row becomes collectable; it is deliberately not wired
+# into get_tab_auth_session, so no real session is affected by it.
+DEMO_IDLE_TIMEOUT = timedelta(minutes=2)
+
 
 def _demo_evaluator_qs():
     """Throwaway evaluators minted by :func:`demo_login_view`, and only those.
@@ -629,16 +635,17 @@ def _demo_evaluator_qs():
 def finished_demo_evaluators():
     """Demo evaluators whose sessions are all dead, and so safe to collect.
 
-    A visitor qualifies only once every token they hold is revoked, expired or
-    past the idle window — that is, once they could no longer act anyway — so
-    collecting them never interrupts someone mid-demo.
+    A visitor qualifies once every token they hold is revoked, expired, or
+    quiet for DEMO_IDLE_TIMEOUT. Deleting the row cascades its tokens away, so
+    an abandoned tab simply meets the usual session-expired screen if it ever
+    comes back.
     """
     now = timezone.now()
     live_session = TabAuthSession.objects.filter(
         dermatologist=OuterRef("pk"),
         revoked_at__isnull=True,
         expires_at__gt=now,
-        last_used_at__gt=now - AUTH_IDLE_TIMEOUT,
+        last_used_at__gt=now - DEMO_IDLE_TIMEOUT,
     )
     return _demo_evaluator_qs().filter(~Exists(live_session))
 

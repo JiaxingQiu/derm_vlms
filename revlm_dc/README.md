@@ -50,6 +50,7 @@ python manage.py runserver
 - **Assignments** are pre-computed as 500 static slots by `parsedata` and never recomputed on the server. Once a user registers, their lesion list is immutable. See [ASSIGNMENT.md](readme/ASSIGNMENT.md).
 - **Test account:** Log in with username `test` — no registration needed. Resets on each login. Always uses slot 0.
 - **Admin panel:** Run `python manage.py createsuperuser` once, then visit [http://localhost:8000/admin/](http://localhost:8000/admin/).
+- **Locking a finished user (read-only):** Add their `login_id` to `revlm_dc/data/locked_users.json` (a JSON list, e.g. `["joyyy"]`). They can still log in and browse every case, but nothing they do is saved — no edits, no progress cursor, no timing. Takes effect on their next request; remove the id to unlock. Because `data/` is gitignored, create/edit this file directly wherever the app runs (locally or on the server) — no restart or deploy needed.
 
 ---
 

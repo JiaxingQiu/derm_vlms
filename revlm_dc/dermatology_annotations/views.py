@@ -40,6 +40,79 @@ def load_annotations_data():
 
 
 # ---------------------------------------------------------------------------
+# Record locking (read-only mode for finished evaluators)
+# ---------------------------------------------------------------------------
+#
+# Login IDs listed in data/locked_users.json are served a fully read-only
+# annotations page: they can still log in and browse every instance, but no
+# request of theirs writes anything to the database — not annotation content,
+# not the progress cursor, not mark-complete, and not the page-visit timing
+# that drives duration. Locking someone is just adding their login_id to that
+# JSON file; it takes effect on the next request with no restart or deploy.
+
+LOCKED_USERS_FILENAME = "locked_users.json"
+
+_locked_cache = {"mtime": None, "ids": frozenset()}
+
+
+def _locked_users_path():
+    return Path(settings.BASE_DIR) / "data" / LOCKED_USERS_FILENAME
+
+
+def _locked_login_ids():
+    """Return the set of locked login_ids, cached by the file's mtime.
+
+    Fails open: if the file is missing, unreadable, or malformed we return an
+    empty set, so a typo or a deleted file can never freeze the live platform
+    for real evaluators. Locking is the rare exception, normal editing is the
+    default, and the default must always win on error.
+    """
+    path = _locked_users_path()
+    try:
+        mtime = path.stat().st_mtime
+    except OSError:
+        _locked_cache["mtime"] = None
+        _locked_cache["ids"] = frozenset()
+        return _locked_cache["ids"]
+
+    if mtime != _locked_cache["mtime"]:
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                raw = json.load(f)
+            ids = frozenset(
+                str(x).strip().lower() for x in raw if str(x).strip()
+            )
+        except (OSError, ValueError, TypeError):
+            ids = frozenset()
+        _locked_cache["mtime"] = mtime
+        _locked_cache["ids"] = ids
+
+    return _locked_cache["ids"]
+
+
+def is_locked(login_id):
+    """True if this evaluator's record is frozen (read-only)."""
+    if not login_id:
+        return False
+    return login_id.strip().lower() in _locked_login_ids()
+
+
+def _locked_view_page(request, total_pages):
+    """Clamp the ?view_page=N GET param to a valid flat page index.
+
+    Used only in locked mode, where the displayed page comes from the URL
+    instead of the stored cursor so that browsing writes nothing.
+    """
+    if total_pages <= 0:
+        return 0
+    try:
+        vp = int(request.GET.get("view_page", 0))
+    except (TypeError, ValueError):
+        vp = 0
+    return max(0, min(vp, total_pages - 1))
+
+
+# ---------------------------------------------------------------------------
 # User / assignment helpers (DB-backed)
 # ---------------------------------------------------------------------------
 
@@ -722,6 +795,7 @@ def _derm_annotations_view(request, raw_token, tab_session):
     """Annotation view for Dermatologist users — all pages are conditional."""
     login_id = tab_session.dermatologist.login_id
     dermatologist = tab_session.dermatologist
+    locked = is_locked(login_id)
 
     annotations_data = load_annotations_data()
     user_case_ids = get_user_case_ids(dermatologist, role="Dermatologist")
@@ -744,17 +818,23 @@ def _derm_annotations_view(request, raw_token, tab_session):
     total_pages = len(pages)
 
     # ---- Determine current flat page index ----
-    current_case_idx = dermatologist.current_case_index
-    current_model_idx = dermatologist.current_model_index
-    if current_case_idx >= len(case_ids):
-        flat_index = total_pages
+    if locked:
+        # Read-only viewers navigate by URL (?view_page=N) so browsing never
+        # writes the cursor. Default to the first page, ignoring where the
+        # original evaluator left off (and their is_done end-state).
+        flat_index = _locked_view_page(request, total_pages)
     else:
-        target_case_id = case_ids[current_case_idx]
-        flat_index = 0
-        for pi, (pid, _) in enumerate(pages):
-            if pid == target_case_id:
-                flat_index = pi + current_model_idx
-                break
+        current_case_idx = dermatologist.current_case_index
+        current_model_idx = dermatologist.current_model_index
+        if current_case_idx >= len(case_ids):
+            flat_index = total_pages
+        else:
+            target_case_id = case_ids[current_case_idx]
+            flat_index = 0
+            for pi, (pid, _) in enumerate(pages):
+                if pid == target_case_id:
+                    flat_index = pi + current_model_idx
+                    break
 
     # ---- Done-confirmation screen ----
     if flat_index >= total_pages:
@@ -791,7 +871,8 @@ def _derm_annotations_view(request, raw_token, tab_session):
             },
         )
 
-    if dermatologist.is_done:
+    # A locked (read-only) evaluator may be is_done; let them view anyway.
+    if dermatologist.is_done and not locked:
         revoke_tab_auth_session(raw_token)
         return redirect("login")
 
@@ -806,19 +887,43 @@ def _derm_annotations_view(request, raw_token, tab_session):
         else {}
     )
 
-    annotation, _ = Annotation.objects.get_or_create(
-        dermatologist=dermatologist,
-        case_id=current_case_id,
-        model=current_model_key or "",
-    )
+    if locked:
+        # Never create a row: browsing to a page the evaluator never reached
+        # must leave the database untouched. An unsaved instance renders fine.
+        annotation = (
+            Annotation.objects.filter(
+                dermatologist=dermatologist,
+                case_id=current_case_id,
+                model=current_model_key or "",
+            ).first()
+            or Annotation(
+                dermatologist=dermatologist,
+                case_id=current_case_id,
+                model=current_model_key or "",
+            )
+        )
+    else:
+        annotation, _ = Annotation.objects.get_or_create(
+            dermatologist=dermatologist,
+            case_id=current_case_id,
+            model=current_model_key or "",
+        )
 
     now = timezone.now()
     visits = annotation.page_visits or []
-    if request.method == "GET":
+    # The page-visit append is a write, and it feeds duration. Skip it when
+    # locked so merely viewing never touches timing.
+    if request.method == "GET" and not locked:
         if not visits or visits[-1]["completed_at"] is not None:
             visits.append({"entered_at": now.isoformat(), "completed_at": None})
             annotation.page_visits = visits
             annotation.save(update_fields=["page_visits"])
+
+    # ---- Locked: refuse every write, no matter the action ----
+    if request.method == "POST" and locked:
+        if is_json_request(request):
+            return JsonResponse({"ok": True, "locked": True})
+        return redirect(auth_url("annotations", raw_token))
 
     # ---- POST: save annotation ----
     if request.method == "POST":
@@ -945,6 +1050,7 @@ def _derm_annotations_view(request, raw_token, tab_session):
         "marked_complete": annotation.marked_complete,
         "page_list": page_list,
         "auth_token": raw_token,
+        "locked": locked,
     }
 
     return render(request, "annotations_conditional.html", context)
@@ -981,6 +1087,7 @@ def _pcp_annotations_view(request, raw_token, tab_session):
     """Annotation view for PCP users."""
     pcp_user = tab_session.pcp_user
     login_id = pcp_user.login_id
+    locked = is_locked(login_id)
 
     annotations_data = load_annotations_data()
     user_case_ids = get_user_case_ids(pcp_user, role="PCP")
@@ -1003,17 +1110,20 @@ def _pcp_annotations_view(request, raw_token, tab_session):
     total_pages = len(pages)
 
     # ---- Determine current flat page index ----
-    current_case_idx = pcp_user.current_case_index
-    current_model_idx = pcp_user.current_model_index
-    if current_case_idx >= len(case_ids):
-        flat_index = total_pages
+    if locked:
+        flat_index = _locked_view_page(request, total_pages)
     else:
-        target_case_id = case_ids[current_case_idx]
-        flat_index = 0
-        for pi, (pid, _, _) in enumerate(pages):
-            if pid == target_case_id:
-                flat_index = pi + current_model_idx
-                break
+        current_case_idx = pcp_user.current_case_index
+        current_model_idx = pcp_user.current_model_index
+        if current_case_idx >= len(case_ids):
+            flat_index = total_pages
+        else:
+            target_case_id = case_ids[current_case_idx]
+            flat_index = 0
+            for pi, (pid, _, _) in enumerate(pages):
+                if pid == target_case_id:
+                    flat_index = pi + current_model_idx
+                    break
 
     # ---- Done-confirmation screen ----
     if flat_index >= total_pages:
@@ -1050,7 +1160,8 @@ def _pcp_annotations_view(request, raw_token, tab_session):
             },
         )
 
-    if pcp_user.is_done:
+    # A locked (read-only) evaluator may be is_done; let them view anyway.
+    if pcp_user.is_done and not locked:
         revoke_tab_auth_session(raw_token)
         return redirect("login")
 
@@ -1059,20 +1170,41 @@ def _pcp_annotations_view(request, raw_token, tab_session):
     current_case_id, current_model_key, current_itype = pages[flat_index]
     current_case_data = annotations_data[current_case_id]
 
-    annotation, _ = PCPAnnotation.objects.get_or_create(
-        pcp_user=pcp_user,
-        case_id=current_case_id,
-        model=current_model_key or "",
-        defaults={"interface_type": current_itype},
-    )
+    if locked:
+        annotation = (
+            PCPAnnotation.objects.filter(
+                pcp_user=pcp_user,
+                case_id=current_case_id,
+                model=current_model_key or "",
+            ).first()
+            or PCPAnnotation(
+                pcp_user=pcp_user,
+                case_id=current_case_id,
+                model=current_model_key or "",
+                interface_type=current_itype,
+            )
+        )
+    else:
+        annotation, _ = PCPAnnotation.objects.get_or_create(
+            pcp_user=pcp_user,
+            case_id=current_case_id,
+            model=current_model_key or "",
+            defaults={"interface_type": current_itype},
+        )
 
     now = timezone.now()
     visits = annotation.page_visits or []
-    if request.method == "GET":
+    if request.method == "GET" and not locked:
         if not visits or visits[-1]["completed_at"] is not None:
             visits.append({"entered_at": now.isoformat(), "completed_at": None})
             annotation.page_visits = visits
             annotation.save(update_fields=["page_visits"])
+
+    # ---- Locked: refuse every write, no matter the action ----
+    if request.method == "POST" and locked:
+        if is_json_request(request):
+            return JsonResponse({"ok": True, "locked": True})
+        return redirect(auth_url("annotations", raw_token))
 
     # ---- POST: save annotation ----
     if request.method == "POST":
@@ -1248,6 +1380,7 @@ def _pcp_annotations_view(request, raw_token, tab_session):
             "marked_complete": annotation.marked_complete,
             "page_list": page_list,
             "auth_token": raw_token,
+            "locked": locked,
         }
         return render(request, "annotations_unconditional.html", context)
     else:
@@ -1285,6 +1418,7 @@ def _pcp_annotations_view(request, raw_token, tab_session):
             "marked_complete": annotation.marked_complete,
             "page_list": page_list,
             "auth_token": raw_token,
+            "locked": locked,
         }
         return render(request, "annotations_conditional.html", context)
 

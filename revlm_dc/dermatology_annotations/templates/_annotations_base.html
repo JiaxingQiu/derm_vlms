@@ -22,6 +22,10 @@
 {% block json_data %}{% endblock %}
 {{ page_list|json_script:"page-list-data" }}
 
+{% if locked %}
+<div class="lock-banner">Read-only &mdash; this record is locked. You can view and navigate, but no changes are saved.</div>
+{% endif %}
+
 <div class="sidebar" id="sidebar">
     <div class="sidebar-header">
         <span class="sidebar-title">Pages</span>
@@ -31,7 +35,7 @@
 </div>
 <div class="sidebar-overlay" id="sidebar-overlay"></div>
 
-<div class="anno-shell">
+<div class="anno-shell{% if locked %} lock-on{% endif %}">
     <header class="anno-header">
         <button type="button" class="sidebar-toggle" id="sidebar-toggle">&#9776; <span class="sidebar-toggle-label">MENU</span></button>
         <h1>Dermatology VLM Evaluation</h1>
@@ -97,6 +101,7 @@
             </div>
 
             <div class="right-panel">
+                {% if locked %}<div class="lock-curtain" title="Read-only — record locked"></div>{% endif %}
                 {% block right_panel %}{% endblock %}
             </div>
         </div>
@@ -231,6 +236,15 @@ main{max-width:none;margin:0;padding:8px 12px}
 .sidebar-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.15);z-index:199}
 .sidebar-overlay.show{display:block}
 
+/* ===== Read-only lock ===== */
+.lock-banner{position:fixed;top:0;left:50%;transform:translateX(-50%);z-index:300;background:#fef3cd;color:#92400e;border:1px solid #fcd34d;border-top:none;border-radius:0 0 10px 10px;padding:5px 18px;font-size:.8rem;font-weight:600;pointer-events:none;box-shadow:0 2px 6px rgba(0,0,0,.12)}
+.lock-on .right-panel{position:relative}
+/* Transparent curtain over the editable panel — swallows every click/drag. */
+.lock-curtain{position:absolute;inset:0;z-index:20;background:transparent;cursor:not-allowed}
+/* Editing-only controls have no meaning in read-only mode. */
+.lock-on .page-footer{display:none}
+.lock-on #btn-mark-complete{display:none}
+
 {% block interface_css %}{% endblock %}
 </style>
 
@@ -239,6 +253,16 @@ main{max-width:none;margin:0;padding:8px 12px}
     var _pageCaseId = '{{ case_id }}';
     var _pageModelKey = '';  // overridden by child template
     var imagePath = '/media/' + '{{ case_data.image_path }}';
+
+    // Read-only lock: when true, navigation happens by URL (no writes) and
+    // every editing / saving path below is disabled.
+    var _locked = {% if locked %}true{% else %}false{% endif %};
+    var _lockedCurrentPage = {{ current_page|default:0 }};
+    var _lockedTotalPages = {{ total_pages|default:0 }};
+    function _lockedNavUrl(idx) {
+        return window.location.pathname + '?auth=' +
+               encodeURIComponent(_authTokenValue()) + '&view_page=' + idx;
+    }
 
     var imgEl = document.getElementById('img');
     var containerEl = document.getElementById('img-container');
@@ -880,6 +904,16 @@ main{max-width:none;margin:0;padding:8px 12px}
         btn.addEventListener('click', function () {
             var action = btn.dataset.action;
             if (!action) return;
+            if (_locked) {
+                // Prev/Next browse read-only via URL; everything else is inert.
+                var t = null;
+                if (action === 'previous') t = _lockedCurrentPage - 1;
+                else if (action === 'next') t = _lockedCurrentPage + 1;
+                if (t !== null && t >= 0 && t < _lockedTotalPages) {
+                    window.location.href = _lockedNavUrl(t);
+                }
+                return;
+            }
             if ((action === 'next' || action === 'finish') && !isPageComplete()) {
                 showNavWarning();
                 return;
@@ -947,6 +981,7 @@ main{max-width:none;margin:0;padding:8px 12px}
 
     /* ===== Reset button ===== */
     document.getElementById('btn-reset').onclick = function () {
+        if (_locked) return;
         var ans = prompt('This will permanently delete ALL feedback for ALL cases.\nType RESET to confirm:');
         if (ans !== 'RESET') return;
         // Critical: kill autosave BEFORE submitting so the pagehide beacon
@@ -1002,6 +1037,7 @@ main{max-width:none;margin:0;padding:8px 12px}
             row.appendChild(check);
             row.addEventListener('click', function () {
                 if (p.idx === currentPage) { closeSidebar(); return; }
+                if (_locked) { window.location.href = _lockedNavUrl(p.idx); return; }
                 var form = document.getElementById('annotation-form');
                 var input = document.createElement('input');
                 input.type = 'hidden';
@@ -1043,11 +1079,14 @@ main{max-width:none;margin:0;padding:8px 12px}
             scheduleAutosave();
         };
     })();
-    _autosaveArmed = true;
+    // A locked record is view-only: never arm autosave, never flush a beacon.
+    if (!_locked) _autosaveArmed = true;
 
     // Flush the latest edits if the user closes the tab or reloads.
-    window.addEventListener('pagehide', flushAutosaveBeacon);
-    window.addEventListener('beforeunload', flushAutosaveBeacon);
+    if (!_locked) {
+        window.addEventListener('pagehide', flushAutosaveBeacon);
+        window.addEventListener('beforeunload', flushAutosaveBeacon);
+    }
 
     // When the user switches back to this tab, verify the session is still
     // valid. If another tab logged in (revoking this token), kick out

@@ -140,3 +140,5 @@ sudo tail -f /var/log/nginx/error.log
 - [ASSIGNMENT.md](readme/ASSIGNMENT.md) — How lesions are assigned to annotators (slot system, registration flow, safety guarantees)
 - [DEPLOYMENT.md](readme/DEPLOYMENT.md) — Full server deployment guide (Gunicorn + Nginx + HTTPS + Azure PostgreSQL)
 
+
+

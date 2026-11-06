@@ -28,6 +28,7 @@ Follow these steps to set up the project on a new machine. You will need the rep
 ```bash
 git clone -b registration https://github.com/JiaxingQiu/derm_vlms.git
 cd derm_vlms
+unset PYTHONPATH
 conda create -n dermato_llama python=3.11 -y
 conda activate dermato_llama
 pip install -r requirements_local.txt

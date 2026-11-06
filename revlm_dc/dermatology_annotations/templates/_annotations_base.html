@@ -294,7 +294,17 @@ main{max-width:none;margin:0;padding:8px 12px}
     var _autosaveArmed = false;
     var _autosaveTimer = null;
     var _autosaveInflight = false;
+    var _navSubmitting = false;
     var AUTOSAVE_DELAY_MS = 500;
+
+    function _stampPageIdentity() {
+        var raw = reviewDataInputEl.value || '{}';
+        var parsed;
+        try { parsed = JSON.parse(raw); } catch (e) { parsed = {}; }
+        parsed._page_case_id = _pageCaseId;
+        parsed._page_model_key = _pageModelKey;
+        reviewDataInputEl.value = JSON.stringify(parsed);
+    }
 
     function _buildAutosaveBody() {
         var raw = reviewDataInputEl.value || '{}';
@@ -918,6 +928,7 @@ main{max-width:none;margin:0;padding:8px 12px}
                 showNavWarning();
                 return;
             }
+            if (_navSubmitting) return;
             if (action === 'mark_complete') {
                 var mcBtn = document.getElementById('btn-mark-complete');
                 mcBtn.blur();
@@ -959,6 +970,7 @@ main{max-width:none;margin:0;padding:8px 12px}
                 });
                 return;
             }
+            _navSubmitting = true;
             syncHiddenPayload();
             _autosaveArmed = false;
             if (_autosaveTimer) { clearTimeout(_autosaveTimer); _autosaveTimer = null; }
@@ -1038,6 +1050,8 @@ main{max-width:none;margin:0;padding:8px 12px}
             row.addEventListener('click', function () {
                 if (p.idx === currentPage) { closeSidebar(); return; }
                 if (_locked) { window.location.href = _lockedNavUrl(p.idx); return; }
+                if (_navSubmitting) return;
+                _navSubmitting = true;
                 var form = document.getElementById('annotation-form');
                 var input = document.createElement('input');
                 input.type = 'hidden';
@@ -1076,6 +1090,7 @@ main{max-width:none;margin:0;padding:8px 12px}
         var _origSync = syncHiddenPayload;
         syncHiddenPayload = function () {
             _origSync();
+            _stampPageIdentity();
             scheduleAutosave();
         };
     })();

@@ -173,6 +173,35 @@ def parse_request_payload(request):
     return payload
 
 
+def _norm_model_key(value):
+    """Treat None and '' as the same key. Unconditional pages have no model."""
+    return "" if value is None else str(value)
+
+
+def reject_stale_page_write(request, payload, current_case_id, current_model_key, raw_token, *, required):
+    """Drop page identity from payload. Refuse a write that is not for this cursor.
+
+    Content saves must name their case and model. A missing name is refused:
+    Next/Previous form posts used to omit it, so a second submit was applied
+    to whatever page the cursor had already moved on to. ``goto`` only refuses
+    an identity that is present and does not match.
+    """
+    page_cid = payload.pop("_page_case_id", None)
+    page_mk = payload.pop("_page_model_key", None)
+    named = page_cid is not None
+    matches = (
+        named
+        and page_cid == current_case_id
+        and _norm_model_key(page_mk) == _norm_model_key(current_model_key)
+    )
+    stale = (not matches) if required else (named and not matches)
+    if not stale:
+        return None
+    if is_json_request(request):
+        return JsonResponse({"ok": False, "reason": "stale_page"})
+    return redirect(auth_url("annotations", raw_token, nav=1))
+
+
 def hash_auth_token(raw_token):
     return hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
 
@@ -938,14 +967,12 @@ def _derm_annotations_view(request, raw_token, tab_session):
             dermatologist.save()
             return redirect(auth_url("annotations", raw_token))
 
-        page_cid = payload.pop("_page_case_id", None)
-        page_mk = payload.pop("_page_model_key", None)
-        if page_cid is not None and (
-            page_cid != current_case_id or page_mk != current_model_key
-        ):
-            if is_json_request(request):
-                return JsonResponse({"ok": False, "reason": "stale_page"})
-            return redirect(auth_url("annotations", raw_token, nav=1))
+        stale = reject_stale_page_write(
+            request, payload, current_case_id, current_model_key, raw_token,
+            required=(action != "goto"),
+        )
+        if stale is not None:
+            return stale
 
         if action == "mark_complete":
             annotation.marked_complete = payload.get("mark_complete_value") == "true"
@@ -1219,14 +1246,12 @@ def _pcp_annotations_view(request, raw_token, tab_session):
             pcp_user.save()
             return redirect(auth_url("annotations", raw_token))
 
-        page_cid = payload.pop("_page_case_id", None)
-        page_mk = payload.pop("_page_model_key", None)
-        if page_cid is not None and (
-            page_cid != current_case_id or (page_mk or "") != (current_model_key or "")
-        ):
-            if is_json_request(request):
-                return JsonResponse({"ok": False, "reason": "stale_page"})
-            return redirect(auth_url("annotations", raw_token, nav=1))
+        stale = reject_stale_page_write(
+            request, payload, current_case_id, current_model_key, raw_token,
+            required=(action != "goto"),
+        )
+        if stale is not None:
+            return stale
 
         if action == "mark_complete":
             annotation.marked_complete = payload.get("mark_complete_value") == "true"

@@ -106,3 +106,41 @@ python manage.py migrate       # first time only
 python manage.py runserver
 ```
 
+
+# 4. Debug mode
+
+If a reviewer reports a bug in the live annotation interface, stop the app on the Azure VM before debugging. Stopping freezes new edits. Annotations already saved in PostgreSQL stay as they are.
+
+Leave Nginx, PostgreSQL, and the VM running. Do not `systemctl disable` the unit, and do not kill Gunicorn by hand. The unit is `Restart=always`, so a manual kill starts it again within a few seconds. The unit stays `enabled`, so a reboot of the VM would start the app again. Leave the VM up while you debug.
+
+Do not run `migrate` or `parsedata` on the server while it is down for a bug.
+
+**4.1 Stop the service**
+
+SSH to `derm-dc-vm` as `azureuser`:
+
+```bash
+sudo systemctl stop revlm_dc
+sudo systemctl status revlm_dc --no-pager
+```
+
+`status` should show `Active: inactive (dead)`, and the process should have exited with `status=0/SUCCESS`.
+
+http://20.246.91.185 returns **502 Bad Gateway** until the service is started again.
+
+**4.2 Debug locally**
+
+Reproduce and fix on your own machine with the local server in section 3.4. Deploy the fix with the steps in [revlm_dc/README.md](revlm_dc/README.md) before turning production back on. `systemctl start` brings back whatever code is already on the VM.
+
+**4.3 Turn the service back on**
+
+On the VM, after the fix is on the server:
+
+```bash
+sudo systemctl start revlm_dc
+sudo systemctl status revlm_dc --no-pager
+curl -I http://127.0.0.1:8000
+```
+
+`status` should say `active (running)`. `curl` should return HTTP 200 or 302.
+
